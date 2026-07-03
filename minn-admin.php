@@ -22,7 +22,12 @@ define( 'MINN_ADMIN_URL', plugin_dir_url( __FILE__ ) );
 
 require_once MINN_ADMIN_DIR . 'includes/class-minn-admin.php';
 require_once MINN_ADMIN_DIR . 'includes/class-minn-admin-rest.php';
+require_once MINN_ADMIN_DIR . 'includes/class-minn-admin-surfaces.php';
 require_once MINN_ADMIN_DIR . 'includes/class-minn-admin-updater.php';
+
+// Bundled adapters for third-party plugins (each guards on its plugin).
+require_once MINN_ADMIN_DIR . 'includes/adapters/gravity-forms.php';
+require_once MINN_ADMIN_DIR . 'includes/adapters/gravity-smtp.php';
 
 Minn_Admin::init();
 Minn_Admin_REST::init();

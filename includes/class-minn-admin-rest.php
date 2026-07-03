@@ -75,6 +75,38 @@ class Minn_Admin_REST {
 			)
 		);
 
+		$sessions_perm = function ( WP_REST_Request $request ) {
+			$uid = (int) $request['id'];
+			return get_current_user_id() === $uid || current_user_can( 'edit_users' );
+		};
+
+		register_rest_route(
+			self::NS,
+			'/users/(?P<id>\d+)/sessions',
+			array(
+				array(
+					'methods'             => 'GET',
+					'callback'            => array( __CLASS__, 'user_sessions' ),
+					'permission_callback' => $sessions_perm,
+				),
+				array(
+					'methods'             => 'DELETE',
+					'callback'            => array( __CLASS__, 'destroy_all_sessions' ),
+					'permission_callback' => $sessions_perm,
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NS,
+			'/users/(?P<id>\d+)/sessions/(?P<verifier>[a-f0-9]{40,64})',
+			array(
+				'methods'             => 'DELETE',
+				'callback'            => array( __CLASS__, 'destroy_session' ),
+				'permission_callback' => $sessions_perm,
+			)
+		);
+
 		register_rest_route(
 			self::NS,
 			'/plugins/update-all',
@@ -357,6 +389,69 @@ class Minn_Admin_REST {
 			}
 		}
 		return rest_ensure_response( array( 'updates' => $map ) );
+	}
+
+	/**
+	 * Active login sessions for a user, from the session_tokens user meta.
+	 */
+	public static function user_sessions( WP_REST_Request $request ) {
+		$uid    = (int) $request['id'];
+		$tokens = get_user_meta( $uid, 'session_tokens', true );
+		$tokens = is_array( $tokens ) ? $tokens : array();
+
+		// Flag the requester's own current session so the UI can warn.
+		$current = '';
+		if ( get_current_user_id() === $uid && function_exists( 'wp_get_session_token' ) ) {
+			$token   = wp_get_session_token();
+			$current = function_exists( 'hash' ) ? hash( 'sha256', $token ) : sha1( $token );
+		}
+
+		$items = array();
+		foreach ( $tokens as $verifier => $session ) {
+			$items[] = array(
+				'verifier'   => $verifier,
+				'ip'         => isset( $session['ip'] ) ? $session['ip'] : '',
+				'ua'         => isset( $session['ua'] ) ? $session['ua'] : '',
+				'login'      => isset( $session['login'] ) ? (int) $session['login'] : 0,
+				'expiration' => isset( $session['expiration'] ) ? (int) $session['expiration'] : 0,
+				'current'    => $verifier === $current,
+			);
+		}
+		usort( $items, function ( $a, $b ) {
+			return $b['login'] - $a['login'];
+		} );
+
+		return rest_ensure_response( array( 'sessions' => $items ) );
+	}
+
+	/**
+	 * Destroy every session for a user (keeps the requester's own current
+	 * session when acting on themselves, so they aren't logged out mid-action).
+	 */
+	public static function destroy_all_sessions( WP_REST_Request $request ) {
+		$uid     = (int) $request['id'];
+		$manager = WP_Session_Tokens::get_instance( $uid );
+		if ( get_current_user_id() === $uid ) {
+			$manager->destroy_others( wp_get_session_token() );
+		} else {
+			$manager->destroy_all();
+		}
+		return rest_ensure_response( array( 'ok' => true ) );
+	}
+
+	/**
+	 * Destroy a single session by its verifier hash.
+	 */
+	public static function destroy_session( WP_REST_Request $request ) {
+		$uid      = (int) $request['id'];
+		$verifier = $request['verifier'];
+		$tokens   = get_user_meta( $uid, 'session_tokens', true );
+		if ( ! is_array( $tokens ) || ! isset( $tokens[ $verifier ] ) ) {
+			return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
+		}
+		unset( $tokens[ $verifier ] );
+		update_user_meta( $uid, 'session_tokens', $tokens );
+		return rest_ensure_response( array( 'ok' => true ) );
 	}
 
 	/**
