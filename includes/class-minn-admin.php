@@ -154,6 +154,7 @@ class Minn_Admin {
 			'caps'     => array(
 				'plugins'  => current_user_can( 'activate_plugins' ),
 				'update'   => current_user_can( 'update_plugins' ),
+				'delete'   => current_user_can( 'delete_plugins' ),
 				'settings' => current_user_can( 'manage_options' ),
 				'moderate' => current_user_can( 'moderate_comments' ),
 				'upload'   => current_user_can( 'upload_files' ),

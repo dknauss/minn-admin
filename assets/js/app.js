@@ -581,6 +581,25 @@
 		state.cache.media = c;
 	}
 
+	function mapMediaItem( m ) {
+		const kind = mediaKind( m.mime_type );
+		const md = m.media_details || {};
+		const thumb = ( md.sizes && md.sizes.medium && md.sizes.medium.source_url ) || ( kind === 'IMG' || kind === 'SVG' ? m.source_url : null );
+		return {
+			id: m.id,
+			name: decodeEntities( m.title.rendered ) || ( m.source_url || '' ).split( '/' ).pop(),
+			kind,
+			mime: m.mime_type,
+			url: m.source_url,
+			thumb,
+			grad: GRADS[ kind ] || GRADS.FILE,
+			dims: md.width ? `${ md.width }×${ md.height }` : '—',
+			size: fmtBytes( md.filesize ),
+			date: m.date,
+			alt: m.alt_text || '',
+		};
+	}
+
 	async function uploadFiles( files ) {
 		if ( ! files.length ) return;
 		let done = 0;
@@ -609,24 +628,7 @@
 			return;
 		}
 		const items = c.items;
-		const mapped = items.map( ( m ) => {
-			const kind = mediaKind( m.mime_type );
-			const md = m.media_details || {};
-			const thumb = ( md.sizes && md.sizes.medium && md.sizes.medium.source_url ) || ( kind === 'IMG' || kind === 'SVG' ? m.source_url : null );
-			return {
-				id: m.id,
-				name: decodeEntities( m.title.rendered ) || ( m.source_url || '' ).split( '/' ).pop(),
-				kind,
-				mime: m.mime_type,
-				url: m.source_url,
-				thumb,
-				grad: GRADS[ kind ] || GRADS.FILE,
-				dims: md.width ? `${ md.width }×${ md.height }` : '—',
-				size: fmtBytes( md.filesize ),
-				date: m.date,
-				alt: m.alt_text || '',
-			};
-		} );
+		const mapped = items.map( mapMediaItem );
 		const countLabel = `${ mapped.length }${ c.page < c.totalPages ? ' of ' + c.total : '' } file${ c.total === 1 ? '' : 's' }`;
 		const thumbStyle = ( m ) => m.thumb
 			? `background-image:url('${ esc( m.thumb ) }')`
@@ -1064,6 +1066,7 @@
 							<div class="minn-plugin-ver">v${ esc( p.version || '?' ) }</div>
 							<button class="minn-switch${ on ? ' on' : '' }" data-toggle="${ esc( p.plugin ) }" role="switch" aria-checked="${ on }" aria-label="Toggle ${ esc( name ) }"><span class="minn-switch-knob"></span></button>
 							<span class="minn-state-label${ on ? ' on' : '' }">${ on ? 'Active' : 'Inactive' }</span>
+							${ ! on && B.caps.delete ? `<button class="minn-plugin-delete" data-del="${ esc( p.plugin ) }" title="Delete ${ esc( name ) }">${ icon( 'trash' ) }</button>` : '' }
 						</div>
 					</div>
 				</div>`;
@@ -1095,6 +1098,25 @@
 					toast( e.message, true );
 				}
 				renderExtensions();
+			} )
+		);
+
+		$$( '[data-del]', view ).forEach( ( btn ) =>
+			btn.addEventListener( 'click', async () => {
+				const file = btn.dataset.del;
+				const plugin = plugins.find( ( p ) => p.plugin === file );
+				const name = decodeEntities( plugin.name );
+				if ( ! confirm( `Delete “${ name }”? This removes its files from the server.` ) ) return;
+				btn.disabled = true;
+				try {
+					await api( 'wp/v2/plugins/' + file, { method: 'DELETE' } );
+					toast( name + ' deleted' );
+					state.cache.plugins = null;
+					await loadPlugins().catch( () => {} );
+				} catch ( e ) {
+					toast( e.message, true );
+				}
+				if ( state.route === 'extensions' ) renderExtensions();
 			} )
 		);
 
@@ -1883,12 +1905,31 @@
 		renderOverlays();
 	}
 
+	// Position of the open media item within the loaded library, for prev/next.
+	function mediaModalContext() {
+		const m = state.modal;
+		if ( ! m || m.type !== 'media' || ! state.cache.media ) return null;
+		const items = state.cache.media.items.map( mapMediaItem );
+		const idx = items.findIndex( ( x ) => x.id === m.item.id );
+		return idx === -1 ? null : { items, idx };
+	}
+
+	function mediaModalNav( dir ) {
+		const ctx = mediaModalContext();
+		if ( ! ctx ) return;
+		const next = ctx.idx + dir;
+		if ( next < 0 || next >= ctx.items.length ) return;
+		state.modal = { type: 'media', item: ctx.items[ next ] };
+		renderOverlays();
+	}
+
 	function renderModal() {
 		const m = state.modal;
 		if ( ! m ) return '';
 
 		if ( m.type === 'media' ) {
 			const it = m.item;
+			const ctx = mediaModalContext();
 			const preview = it.kind === 'IMG' || it.kind === 'SVG'
 				? `<img src="${ esc( it.url ) }" alt="${ esc( it.alt ) }">`
 				: it.kind === 'VID' ? `<video src="${ esc( it.url ) }" controls></video>`
@@ -1905,9 +1946,14 @@
 				<div class="minn-modal">
 					<div class="minn-modal-head">
 						<div class="minn-modal-title">${ esc( it.name ) }</div>
+						${ ctx ? `<span class="minn-modal-count">${ ctx.idx + 1 } / ${ ctx.items.length }</span>` : '' }
 						<button class="minn-x-btn" id="minn-modal-close">×</button>
 					</div>
-					<div class="minn-modal-preview">${ preview }</div>
+					<div class="minn-modal-preview">
+						${ preview }
+						${ ctx && ctx.idx > 0 ? '<button class="minn-modal-nav prev" id="minn-media-prev" title="Previous (←)">‹</button>' : '' }
+						${ ctx && ctx.idx < ctx.items.length - 1 ? '<button class="minn-modal-nav next" id="minn-media-next" title="Next (→)">›</button>' : '' }
+					</div>
 					<div class="minn-modal-meta">
 						${ rows.map( ( [ k, v ] ) => `<div class="minn-side-row"><span class="minn-side-key">${ k }</span><span>${ esc( v ) }</span></div>` ).join( '' ) }
 						<div class="minn-modal-url"><span class="minn-permalink">${ esc( it.url ) }</span></div>
@@ -1987,6 +2033,10 @@
 
 		if ( m.type === 'media' ) {
 			const it = m.item;
+			const prev = $( '#minn-media-prev' );
+			const next = $( '#minn-media-next' );
+			if ( prev ) prev.addEventListener( 'click', () => mediaModalNav( -1 ) );
+			if ( next ) next.addEventListener( 'click', () => mediaModalNav( 1 ) );
 			$( '#minn-media-copy' ).addEventListener( 'click', async () => {
 				try {
 					await navigator.clipboard.writeText( it.url );
@@ -2132,6 +2182,10 @@
 				e.preventDefault();
 				state.paletteOpen = ! state.paletteOpen;
 				renderOverlays();
+			}
+			if ( state.modal && state.modal.type === 'media' ) {
+				if ( e.key === 'ArrowLeft' ) { e.preventDefault(); mediaModalNav( -1 ); }
+				if ( e.key === 'ArrowRight' ) { e.preventDefault(); mediaModalNav( 1 ); }
 			}
 			if ( e.key === 'Escape' && ( state.paletteOpen || state.notifOpen || state.modal ) ) {
 				state.paletteOpen = false;
