@@ -58,6 +58,35 @@ That's a working, paginated, capability-gated view in the Minn sidebar.
 | `detail` | Detail modal config: `detailRoute` (fetch full item by `{id}`), `labels` (resolve field keys to human labels from another route), `messageKey` (render one field as a large text block), `skip` (keys to hide) |
 | `actions` | Buttons in the detail modal: `{ label, method, route, body, confirm, danger }`. `{id}` in the route is replaced with the item id |
 
+## Editor panels — per-post fields in the editor sidebar
+
+For plugins whose data lives *inside the post* (custom fields, SEO meta), register an **editor
+panel** instead of a surface. Same philosophy: a declarative descriptor, rendered by Minn.
+
+```php
+add_filter( 'minn_admin_editor_panels', function ( $panels ) {
+    $panels['my-fields'] = array(
+        'label'       => 'My fields',
+        'sub'         => 'My Plugin',
+        'cap'         => 'edit_posts',
+        // Returns { groups: [ { group, fields: [ {name,label,type,choices,min,max} ], locked } ] }
+        // for the post being edited. {id} = post ID (0 for new), {type} = REST base.
+        'fieldsRoute' => 'my-plugin/v1/fields?post_id={id}&post_type={type}',
+        'valuesKey'   => 'myplugin',   // key on the wp/v2 post response holding current values
+        'writeKey'    => 'myplugin',   // key Minn writes changed values back under on save
+    );
+    return $panels;
+} );
+```
+
+Supported field types: `text`, `textarea`, `number`, `range`, `email`, `url`, `select`, `radio`,
+`true_false`. Report anything else in the `locked` count — Minn shows "N advanced fields — edit
+in wp-admin ↗" rather than rendering something unsafe. Values ride the normal post save
+(autosave included), so your plugin only needs its values readable/writable on the post REST
+response (`register_rest_field` or, for ACF, the field group's "Show in REST API" toggle).
+
+The bundled ACF adapter (`includes/adapters/acf.php`) is the reference implementation.
+
 ## No REST API? Ship a shim
 
 If your data lives in custom tables, register a small read-only REST collection and point the
