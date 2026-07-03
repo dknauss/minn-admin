@@ -1,0 +1,34 @@
+<?php
+/**
+ * Plugin Name:       Minn Admin
+ * Plugin URI:        https://github.com/austinginder/minn-admin
+ * Description:       A reimagined WordPress admin experience. Fast, focused and beautiful — served at /minn-admin/.
+ * Version:           0.2.0
+ * Requires at least: 6.0
+ * Requires PHP:      7.4
+ * Author:            Austin Ginder
+ * Author URI:        https://austinginder.com
+ * License:           MIT
+ * License URI:       https://opensource.org/licenses/MIT
+ * Text Domain:       minn-admin
+ */
+
+defined( 'ABSPATH' ) || exit;
+
+define( 'MINN_ADMIN_VERSION', '0.2.0' );
+define( 'MINN_ADMIN_FILE', __FILE__ );
+define( 'MINN_ADMIN_DIR', plugin_dir_path( __FILE__ ) );
+define( 'MINN_ADMIN_URL', plugin_dir_url( __FILE__ ) );
+
+require_once MINN_ADMIN_DIR . 'includes/class-minn-admin.php';
+require_once MINN_ADMIN_DIR . 'includes/class-minn-admin-rest.php';
+
+Minn_Admin::init();
+Minn_Admin_REST::init();
+
+register_activation_hook( __FILE__, function () {
+	Minn_Admin::register_route();
+	flush_rewrite_rules();
+} );
+
+register_deactivation_hook( __FILE__, 'flush_rewrite_rules' );
