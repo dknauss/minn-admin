@@ -22,7 +22,8 @@ class Minn_Admin {
 	}
 
 	public static function register_route() {
-		add_rewrite_rule( '^minn-admin/?$', 'index.php?' . self::QUERY_VAR . '=1', 'top' );
+		// Catch-all so app routes like /minn-admin/content resolve to the SPA.
+		add_rewrite_rule( '^minn-admin(/.*)?$', 'index.php?' . self::QUERY_VAR . '=1', 'top' );
 	}
 
 	public static function query_vars( $vars ) {
@@ -152,16 +153,23 @@ class Minn_Admin {
 				'logout'   => str_replace( '&amp;', '&', wp_logout_url( home_url( '/' ) ) ),
 			),
 			'caps'     => array(
-				'plugins'  => current_user_can( 'activate_plugins' ),
-				'update'   => current_user_can( 'update_plugins' ),
-				'delete'   => current_user_can( 'delete_plugins' ),
-				'settings' => current_user_can( 'manage_options' ),
-				'moderate' => current_user_can( 'moderate_comments' ),
-				'upload'   => current_user_can( 'upload_files' ),
-				'users'    => current_user_can( 'list_users' ),
-				'orders'   => class_exists( 'WooCommerce' ) && current_user_can( 'edit_shop_orders' ),
+				'plugins'      => current_user_can( 'activate_plugins' ),
+				'update'       => current_user_can( 'update_plugins' ),
+				'delete'       => current_user_can( 'delete_plugins' ),
+				'settings'     => current_user_can( 'manage_options' ),
+				'moderate'     => current_user_can( 'moderate_comments' ),
+				'upload'       => current_user_can( 'upload_files' ),
+				'users'        => current_user_can( 'list_users' ),
+				'createUsers'  => current_user_can( 'create_users' ),
+				'editUsers'    => current_user_can( 'edit_users' ),
+				'promoteUsers' => current_user_can( 'promote_users' ),
+				'deleteUsers'  => current_user_can( 'delete_users' ),
+				'orders'       => class_exists( 'WooCommerce' ) && current_user_can( 'edit_shop_orders' ),
 			),
 			'wc'       => class_exists( 'WooCommerce' ),
+			'pretty'   => (bool) get_option( 'permalink_structure' ),
+			'roles'    => current_user_can( 'list_users' ) ? wp_roles()->get_names() : new \stdClass(),
+			'surfaces' => Minn_Admin_Surfaces::for_current_user(),
 		);
 
 		include MINN_ADMIN_DIR . 'includes/template.php';

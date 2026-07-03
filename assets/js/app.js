@@ -115,6 +115,7 @@
 		userSearch: '',
 		range: 30,
 		modal: null,
+		surface: {},
 		notifOpen: false,
 		notifTab: 'all',
 		paletteOpen: false,
@@ -171,10 +172,29 @@
 		toastTimer = setTimeout( () => el.remove(), 2600 );
 	}
 
-	/* ===== Routing ===== */
+	/* ===== Routing =====
+	 * Path-based ( /minn-admin/content ) when pretty permalinks are on,
+	 * falling back to hash routing ( #/content ) on plain permalinks. */
+
+	const BASE = new URL( B.appUrl ).pathname;
+	const PATH_MODE = !! B.pretty;
+
+	function currentPath() {
+		if ( PATH_MODE && location.pathname.startsWith( BASE ) ) {
+			return decodeURIComponent( location.pathname.slice( BASE.length ) ).replace( /\/+$/, '' );
+		}
+		return location.hash.replace( /^#\/?/, '' );
+	}
+
+	function setPath( p, replace ) {
+		const url = PATH_MODE ? BASE + p : ( p ? '#/' + p : location.pathname );
+		history[ replace ? 'replaceState' : 'pushState' ]( null, '', url );
+	}
+
+	const surfaceById = ( id ) => ( B.surfaces || [] ).find( ( s ) => s.id === id ) || null;
 
 	function parseHash() {
-		const h = location.hash.replace( /^#\/?/, '' );
+		const h = currentPath();
 		const parts = h.split( '/' ).filter( Boolean );
 		const route = parts[ 0 ] || 'overview';
 		if ( route === 'editor' ) {
@@ -187,15 +207,26 @@
 				state.editorId = parts[ 2 ] ? parseInt( parts[ 2 ], 10 ) : null;
 			}
 			state.route = 'editor';
-		} else if ( TITLES[ route ] ) {
+		} else if ( TITLES[ route ] || surfaceById( route ) ) {
 			state.route = route;
 		} else {
 			state.route = 'overview';
 		}
 	}
 
+	function onRouteChange() {
+		const prevRoute = state.route;
+		const prevId = state.editorId;
+		parseHash();
+		if ( state.route !== 'editor' || prevRoute !== 'editor' || prevId !== state.editorId ) {
+			if ( state.route === 'editor' && prevRoute !== 'editor' ) state.editor = null;
+			renderView();
+		}
+	}
+
 	function go( route ) {
-		location.hash = '#/' + route;
+		setPath( route );
+		onRouteChange();
 	}
 
 	/* ===== Shell ===== */
@@ -218,6 +249,8 @@
 			cart: '<circle cx="9" cy="21" r="1.5"/><circle cx="19" cy="21" r="1.5"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
 			users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
 			copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+			inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+			send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
 			trash: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
 			upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
 			logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
@@ -237,6 +270,9 @@
 		if ( B.wc && B.caps.orders ) {
 			navItems.push( { id: 'orders', label: 'Orders', icon: 'cart', orderCount: true } );
 		}
+		( B.surfaces || [] ).forEach( ( s ) =>
+			navItems.push( { id: s.id, label: s.label, icon: s.icon || 'plug' } )
+		);
 		if ( B.caps.plugins ) {
 			navItems.push( { id: 'extensions', label: 'Extensions', icon: 'plug', dot: true } );
 		}
@@ -308,7 +344,8 @@
 	}
 
 	function renderTopbar() {
-		const [ title, sub ] = TITLES[ state.route ] || [ 'minn', '' ];
+		const surface = surfaceById( state.route );
+		const [ title, sub ] = surface ? [ surface.label, surface.sub || '' ] : ( TITLES[ state.route ] || [ 'minn', '' ] );
 		$( '#minn-title' ).textContent = title;
 		$( '#minn-sub' ).textContent = state.route === 'editor' && state.editor
 			? ( STATUS_LABELS[ state.editor.status ] || 'Draft' )
@@ -553,9 +590,7 @@
 		} );
 		$$( '.minn-table-row', view ).forEach( ( row ) =>
 			row.addEventListener( 'click', () => {
-				state.editorId = parseInt( row.dataset.id, 10 );
-				state.editorType = row.dataset.type;
-				location.hash = `#/editor/${ state.editorType }/${ state.editorId }`;
+				go( `editor/${ row.dataset.type }/${ row.dataset.id }` );
 			} )
 		);
 		const more = $( '#minn-content-more', view );
@@ -968,6 +1003,7 @@
 		<div class="minn-toolbar">
 			<div class="minn-toolbar-meta" style="margin-left:0;">${ c.total } user${ c.total === 1 ? '' : 's' }</div>
 			<input class="minn-input minn-toolbar-search" id="minn-user-search" placeholder="Search users…" value="${ esc( state.userSearch || '' ) }">
+			${ B.caps.createUsers ? `<button class="minn-btn-soft" id="minn-add-user" style="margin-left:0;">${ icon( 'plus' ) } Add user</button>` : '' }
 		</div>
 		<div class="minn-card minn-table">
 			<div class="minn-table-head minn-user-cols">
@@ -1000,8 +1036,13 @@
 				}
 			}, 350 );
 		} );
+		const addBtn = $( '#minn-add-user', view );
+		if ( addBtn ) addBtn.addEventListener( 'click', () => openUserModal( null ) );
 		$$( '[data-user]', view ).forEach( ( row ) =>
-			row.addEventListener( 'click', () => window.open( B.site.adminUrl + 'user-edit.php?user_id=' + row.dataset.user, '_blank' ) )
+			row.addEventListener( 'click', () => {
+				if ( B.caps.editUsers ) openUserModal( parseInt( row.dataset.user, 10 ) );
+				else window.open( B.site.adminUrl + 'user-edit.php?user_id=' + row.dataset.user, '_blank' );
+			} )
 		);
 		const more = $( '#minn-users-more', view );
 		if ( more ) {
@@ -1011,6 +1052,191 @@
 				await loadUsers( true ).catch( showErr );
 				if ( state.route === 'users' ) renderUsers();
 			} );
+		}
+	}
+
+	/* ===== Surfaces (declarative third-party plugin views) ===== */
+
+	function surfaceState( id ) {
+		if ( ! state.surface[ id ] ) {
+			state.surface[ id ] = { tab: '_all', cache: null, tabs: null, labels: {} };
+		}
+		return state.surface[ id ];
+	}
+
+	function surfaceRoute( s, ss, page ) {
+		const col = s.collection;
+		let route = ss.tab === '_all'
+			? ( col.allRoute || col.route )
+			: col.route.replace( '{tab}', encodeURIComponent( ss.tab ) );
+		const parts = [];
+		if ( col.query ) parts.push( col.query );
+		if ( col.tabs && col.tabs.param && ss.tab !== '_all' ) {
+			parts.push( col.tabs.param + '=' + encodeURIComponent( ss.tab ) );
+		}
+		parts.push( ( col.pageQuery || 'per_page=25&page={page}' ).replace( '{page}', page ) );
+		return route + ( route.includes( '?' ) ? '&' : '?' ) + parts.join( '&' );
+	}
+
+	async function loadSurfaceTabs( s ) {
+		const ss = surfaceState( s.id );
+		const tabs = s.collection.tabs;
+		if ( ! tabs || ss.tabs ) return;
+		const all = [ [ '_all', tabs.allLabel || 'All' ] ];
+		if ( tabs.static ) {
+			ss.tabs = all.concat( tabs.static );
+		} else if ( tabs.route ) {
+			const body = await api( tabs.route );
+			const items = Array.isArray( body ) ? body : Object.values( body );
+			ss.tabs = all.concat( items.map( ( it ) => [ String( it[ tabs.valueKey ] ), stripTags( String( it[ tabs.labelKey ] || it[ tabs.valueKey ] ) ) ] ) );
+		} else {
+			ss.tabs = all;
+		}
+	}
+
+	async function loadSurfaceItems( s, more ) {
+		const ss = surfaceState( s.id );
+		const col = s.collection;
+		const c = more && ss.cache ? ss.cache : { items: [], page: 0, total: 0 };
+		const res = await apiRes( surfaceRoute( s, ss, c.page + 1 ) );
+		const body = await res.json();
+		const items = col.itemsKey
+			? ( body[ col.itemsKey ] || [] )
+			: ( Array.isArray( body ) ? body : Object.values( body ) );
+		c.total = col.totalKey
+			? parseInt( body[ col.totalKey ] || 0, 10 )
+			: parseInt( res.headers.get( 'X-WP-Total' ) || String( items.length ), 10 );
+		c.page++;
+		c.items.push( ...items );
+		ss.cache = c;
+	}
+
+	const PILL_STYLES = {
+		green: [ 'sent', 'active', 'completed', 'publish', 'approved', 'success', 'read' ],
+		red: [ 'failed', 'spam', 'error', 'cancelled' ],
+		amber: [ 'sandboxed', 'pending', 'hold', 'on-hold', 'unread' ],
+	};
+
+	function surfacePill( value ) {
+		const v = String( value || '' ).toLowerCase();
+		let cls = 'draft';
+		if ( PILL_STYLES.green.includes( v ) ) cls = 'publish';
+		else if ( PILL_STYLES.red.includes( v ) ) cls = 'trash-status';
+		else if ( PILL_STYLES.amber.includes( v ) ) cls = 'private';
+		return `<span class="minn-status ${ cls }">${ esc( v || '—' ) }</span>`;
+	}
+
+	// First few scalar values stored under numeric-ish keys (GF entries store
+	// field values as { "1": "...", "2.3": "..." }).
+	function entrySummary( item ) {
+		const vals = Object.keys( item )
+			.filter( ( k ) => /^\d+(\.\d+)?$/.test( k ) )
+			.sort( ( a, b ) => parseFloat( a ) - parseFloat( b ) )
+			.map( ( k ) => String( item[ k ] || '' ).trim() )
+			.filter( Boolean );
+		return vals.slice( 0, 3 ).join( ' · ' ).slice( 0, 90 ) || '(empty entry)';
+	}
+
+	function surfaceCell( item, colDef ) {
+		const v = item[ colDef.key ];
+		switch ( colDef.format ) {
+			case 'ago': return `<div class="minn-row-meta">${ v ? timeAgo( String( v ).replace( ' ', 'T' ) ) : '—' }</div>`;
+			case 'pill': return `<div>${ surfacePill( v ) }</div>`;
+			case 'title': return `<div class="minn-row-title minn-cell-clip">${ esc( stripTags( String( v || '—' ) ) ) }</div>`;
+			case 'entry-summary': return `<div class="minn-row-title minn-cell-clip">${ esc( entrySummary( item ) ) }</div>`;
+			case 'mono': return `<div class="minn-row-meta" style="font-family:'JetBrains Mono',monospace;">${ esc( String( v || '—' ) ) }</div>`;
+			default: return `<div class="minn-row-meta minn-cell-clip">${ esc( stripTags( String( v == null || v === '' ? '—' : v ) ) ) }</div>`;
+		}
+	}
+
+	function renderSurface( s ) {
+		const view = $( '#minn-view' );
+		const ss = surfaceState( s.id );
+		if ( ! ss.cache || ( s.collection.tabs && ! ss.tabs ) ) {
+			view.innerHTML = '<div class="minn-loading">Loading…</div>';
+			Promise.all( [ loadSurfaceTabs( s ), loadSurfaceItems( s ) ] )
+				.then( renderIfCurrent( s.id ) )
+				.catch( showErr );
+			return;
+		}
+		const c = ss.cache;
+		const cols = s.collection.columns || [];
+		const gridCols = cols.map( ( col, i ) => i === 0 ? 'minmax(0,2fr)' : ( col.format === 'ago' || col.format === 'pill' ? '120px' : 'minmax(0,1fr)' ) ).join( ' ' ) + ' 30px';
+
+		view.innerHTML = `
+		<div class="minn-toolbar">
+			${ ss.tabs && ss.tabs.length > 1 ? `
+			<div class="minn-tabs">
+				${ ss.tabs.map( ( [ id, label ] ) =>
+					`<button class="minn-tab${ ss.tab === id ? ' active' : '' }" data-stab="${ esc( id ) }">${ esc( label ) }</button>` ).join( '' ) }
+			</div>` : '' }
+			<div class="minn-toolbar-meta">${ c.total } item${ c.total === 1 ? '' : 's' }</div>
+		</div>
+		<div class="minn-card minn-table">
+			<div class="minn-table-head" style="grid-template-columns:${ gridCols };">
+				${ cols.map( ( col ) => `<div>${ esc( col.label ) }</div>` ).join( '' ) }<div></div>
+			</div>
+			${ c.items.length ? c.items.map( ( item, i ) => `
+				<div class="minn-table-row" style="grid-template-columns:${ gridCols };" data-sitem="${ i }">
+					${ cols.map( ( col ) => surfaceCell( item, col ) ).join( '' ) }
+					<div class="minn-row-arrow">›</div>
+				</div>` ).join( '' ) : '<div class="minn-empty">Nothing here.</div>' }
+		</div>
+		${ c.items.length < c.total ? '<button class="minn-load-more" id="minn-surface-more">Load more</button>' : '' }`;
+
+		$$( '[data-stab]', view ).forEach( ( btn ) =>
+			btn.addEventListener( 'click', () => {
+				ss.tab = btn.dataset.stab;
+				ss.cache = null;
+				renderSurface( s );
+			} )
+		);
+		$$( '[data-sitem]', view ).forEach( ( row ) =>
+			row.addEventListener( 'click', () => {
+				const item = c.items[ parseInt( row.dataset.sitem, 10 ) ];
+				if ( item ) openSurfaceDetail( s, item );
+			} )
+		);
+		const more = $( '#minn-surface-more', view );
+		if ( more ) {
+			more.addEventListener( 'click', async () => {
+				more.disabled = true;
+				more.textContent = 'Loading…';
+				await loadSurfaceItems( s, true ).catch( showErr );
+				if ( state.route === s.id ) renderSurface( s );
+			} );
+		}
+	}
+
+	async function openSurfaceDetail( s, item ) {
+		state.modal = { type: 'surface', surface: s, item, labels: null, loading: true };
+		renderOverlays();
+		const detail = ( s.collection.detail || {} );
+		try {
+			if ( detail.detailRoute ) {
+				state.modal.item = await api( detail.detailRoute.replace( '{id}', item.id ) );
+			}
+			if ( detail.labels ) {
+				const ss = surfaceState( s.id );
+				const route = detail.labels.route.replace( /\{(\w+)\}/g, ( _, k ) => item[ k ] );
+				if ( ! ss.labels[ route ] ) {
+					const body = await api( route );
+					const defs = detail.labels.itemsKey ? ( body[ detail.labels.itemsKey ] || [] ) : body;
+					const map = {};
+					( Array.isArray( defs ) ? defs : Object.values( defs ) ).forEach( ( d ) => {
+						map[ String( d[ detail.labels.valueKey ] ) ] = stripTags( String( d[ detail.labels.labelKey ] || '' ) );
+						( d.inputs || [] ).forEach( ( inp ) => {
+							map[ String( inp.id ) ] = stripTags( String( inp.label || '' ) );
+						} );
+					} );
+					ss.labels[ route ] = map;
+				}
+				state.modal.labels = ss.labels[ route ];
+			}
+		} catch ( e ) { /* show what we have */ }
+		if ( state.modal && state.modal.type === 'surface' ) {
+			state.modal.loading = false;
+			renderOverlays();
 		}
 	}
 
@@ -1471,7 +1697,8 @@
 				payload.status = payload.status || 'draft';
 				p = await api( `wp/v2/${ ed.type }`, { method: 'POST', body: JSON.stringify( payload ) } );
 				ed.id = p.id;
-				history.replaceState( null, '', `#/editor/${ ed.type }/${ p.id }` );
+				state.editorId = p.id;
+				setPath( `editor/${ ed.type }/${ p.id }`, true );
 			}
 			ed.status = p.status;
 			ed.slug = '/' + ( p.slug || '' );
@@ -1833,6 +2060,9 @@
 		if ( B.caps.moderate ) cmds.push( { label: 'Review Comments', kind: 'nav', icon: '💬', run: () => go( 'comments' ) } );
 		if ( B.wc && B.caps.orders ) cmds.push( { label: 'View Orders', kind: 'nav', icon: '⬡', run: () => go( 'orders' ) } );
 		if ( B.caps.users ) cmds.push( { label: 'Browse Users', kind: 'nav', icon: '◉', run: () => go( 'users' ) } );
+		( B.surfaces || [] ).forEach( ( s ) =>
+			cmds.push( { label: 'Open ' + s.label + ( s.sub ? ' (' + s.sub + ')' : '' ), kind: 'nav', icon: '❖', run: () => go( s.id ) } )
+		);
 		if ( B.caps.plugins ) cmds.push( { label: 'Manage Extensions', kind: 'nav', icon: '✦', run: () => go( 'extensions' ) } );
 		if ( B.caps.settings ) cmds.push( { label: 'Open Settings', kind: 'nav', icon: '⚙', run: () => go( 'settings' ) } );
 		cmds.push(
@@ -2003,6 +2233,105 @@
 			</div>`;
 		}
 
+		if ( m.type === 'surface' ) {
+			const s = m.surface;
+			const detail = s.collection.detail || {};
+			const it = m.item;
+			const skip = new Set( [ 'id', ...( detail.skip || [] ) ] );
+			const labels = m.labels || {};
+			const rows = m.loading ? [] : Object.keys( it )
+				.filter( ( k ) => ! skip.has( k ) && k !== detail.messageKey && ! k.startsWith( '_' ) )
+				.map( ( k ) => [ labels[ k ] || k.replace( /_/g, ' ' ), it[ k ] ] )
+				.filter( ( [ , v ] ) => v != null && v !== '' && typeof v !== 'object' )
+				.slice( 0, 24 );
+			const message = ! m.loading && detail.messageKey ? it[ detail.messageKey ] : null;
+			return `
+			<div class="minn-modal-overlay" id="minn-modal-overlay">
+				<div class="minn-modal">
+					<div class="minn-modal-head">
+						<div class="minn-modal-title">${ esc( s.label ) } #${ esc( String( it.id ) ) }</div>
+						${ it.status ? surfacePill( it.status ) : '' }
+						<button class="minn-x-btn" id="minn-modal-close">×</button>
+					</div>
+					${ m.loading ? '<div class="minn-loading">Loading…</div>' : `
+					<div class="minn-modal-meta">
+						${ rows.map( ( [ k, v ] ) => `<div class="minn-side-row"><span class="minn-side-key">${ esc( k ) }</span><span class="minn-surface-val">${ esc( stripTags( String( v ) ) ) }</span></div>` ).join( '' ) }
+					</div>
+					${ message ? `<div class="minn-surface-message">${ esc( stripTags( message ) ) }</div>` : '' }
+					${ ( s.collection.actions || [] ).length ? `
+					<div class="minn-modal-actions">
+						${ s.collection.actions.map( ( a, i ) => `<button class="minn-btn-soft${ a.danger ? ' danger' : '' }" data-saction="${ i }">${ esc( a.label ) }</button>` ).join( '' ) }
+					</div>` : '' }` }
+				</div>
+			</div>`;
+		}
+
+		if ( m.type === 'user' ) {
+			const u = m.user;
+			const isNew = ! m.userId;
+			const roles = Object.entries( B.roles || {} );
+			if ( ! isNew && ! u ) {
+				return `<div class="minn-modal-overlay" id="minn-modal-overlay"><div class="minn-modal"><div class="minn-modal-head"><div class="minn-modal-title">Edit user</div><button class="minn-x-btn" id="minn-modal-close">×</button></div><div class="minn-loading">Loading…</div></div></div>`;
+			}
+			const role = u && u.roles && u.roles[ 0 ] ? u.roles[ 0 ] : 'subscriber';
+			return `
+			<div class="minn-modal-overlay" id="minn-modal-overlay">
+				<div class="minn-modal">
+					<div class="minn-modal-head">
+						<div class="minn-modal-title">${ isNew ? 'Add user' : 'Edit ' + esc( u.name ) }</div>
+						<button class="minn-x-btn" id="minn-modal-close">×</button>
+					</div>
+					<div class="minn-modal-form">
+						${ isNew ? `
+						<div>
+							<div class="minn-field-label">Username</div>
+							<input class="minn-input mono" id="minn-uf-username" autocomplete="off">
+						</div>` : '' }
+						<div>
+							<div class="minn-field-label">Display name</div>
+							<input class="minn-input" id="minn-uf-name" value="${ esc( u ? u.name : '' ) }">
+						</div>
+						<div>
+							<div class="minn-field-label">Email</div>
+							<input class="minn-input mono" id="minn-uf-email" value="${ esc( u ? u.email : '' ) }">
+						</div>
+						<div>
+							<div class="minn-field-label">Role</div>
+							<select class="minn-input" id="minn-uf-role" ${ B.caps.promoteUsers ? '' : 'disabled' }>
+								${ roles.map( ( [ slug, label ] ) => `<option value="${ esc( slug ) }"${ slug === role ? ' selected' : '' }>${ esc( label ) }</option>` ).join( '' ) }
+							</select>
+						</div>
+						<div>
+							<div class="minn-field-label">${ isNew ? 'Password' : 'New password (leave blank to keep)' }</div>
+							<div style="display:flex; gap:8px;">
+								<input class="minn-input mono" id="minn-uf-password" autocomplete="new-password">
+								<button class="minn-btn-soft" id="minn-uf-genpass" style="flex-shrink:0;">Generate</button>
+							</div>
+						</div>
+					</div>
+					${ ! isNew ? `
+					<div class="minn-sessions" id="minn-uf-sessions">
+						<div class="minn-side-title" style="margin:0 0 4px;">Sessions</div>
+						${ m.sessions == null ? '<div class="minn-loading" style="padding:14px;">Loading sessions…</div>'
+							: ! m.sessions.length ? '<div class="minn-session-empty">No active sessions.</div>'
+							: m.sessions.map( ( sess ) => `
+							<div class="minn-session-row">
+								<div class="minn-session-info">
+									<div class="minn-session-ua">${ esc( uaSummary( sess.ua ) ) }${ sess.current ? ' <span class="minn-session-current">this session</span>' : '' }</div>
+									<div class="minn-session-meta">${ esc( sess.ip || '—' ) } · signed in ${ sess.login ? timeAgo( new Date( sess.login * 1000 ).toISOString() ) : '—' }</div>
+								</div>
+								<button class="minn-comment-action danger" data-kill="${ esc( sess.verifier ) }">Sign out</button>
+							</div>` ).join( '' ) }
+						${ m.sessions && m.sessions.length ? '<button class="minn-comment-action danger" id="minn-uf-killall" style="margin:10px 0 0;">Sign out everywhere</button>' : '' }
+					</div>` : '' }
+					<div class="minn-modal-actions">
+						<button class="minn-btn-primary" id="minn-uf-save">${ isNew ? 'Create user' : 'Save changes' }</button>
+						${ ! isNew && B.caps.deleteUsers && u && u.id !== B.user.id ? '<button class="minn-btn-soft danger" id="minn-uf-delete">Delete user</button>' : '' }
+					</div>
+				</div>
+			</div>`;
+		}
+
 		if ( m.type === 'picker' ) {
 			const items = m.items;
 			return `
@@ -2069,6 +2398,174 @@
 					if ( it && cb ) cb( it );
 				} )
 			);
+		}
+
+		if ( m.type === 'surface' ) {
+			$$( '[data-saction]' ).forEach( ( btn ) =>
+				btn.addEventListener( 'click', async () => {
+					const action = m.surface.collection.actions[ parseInt( btn.dataset.saction, 10 ) ];
+					if ( ! action ) return;
+					if ( action.confirm && ! confirm( action.confirm ) ) return;
+					btn.disabled = true;
+					try {
+						await api( action.route.replace( '{id}', m.item.id ), {
+							method: action.method || 'POST',
+							...( action.body ? { body: JSON.stringify( action.body ) } : {} ),
+						} );
+						toast( action.label + ' — done' );
+						surfaceState( m.surface.id ).cache = null;
+						closeModal();
+						if ( state.route === m.surface.id ) renderSurface( m.surface );
+					} catch ( e ) {
+						toast( e.message, true );
+						btn.disabled = false;
+					}
+				} )
+			);
+		}
+
+		if ( m.type === 'user' ) {
+			bindUserModal( m );
+		}
+	}
+
+	/* ===== User modal (create / edit / sessions) ===== */
+
+	function uaSummary( ua ) {
+		if ( ! ua ) return 'Unknown device';
+		const browser = /Edg\//.test( ua ) ? 'Edge' : /OPR\//.test( ua ) ? 'Opera' : /Chrome\//.test( ua ) ? 'Chrome'
+			: /Safari\//.test( ua ) && /Version\//.test( ua ) ? 'Safari' : /Firefox\//.test( ua ) ? 'Firefox' : 'Browser';
+		const os = /Windows/.test( ua ) ? 'Windows' : /iPhone|iPad/.test( ua ) ? 'iOS' : /Android/.test( ua ) ? 'Android'
+			: /Mac OS X/.test( ua ) ? 'macOS' : /Linux/.test( ua ) ? 'Linux' : '';
+		return browser + ( os ? ' · ' + os : '' );
+	}
+
+	function openUserModal( userId ) {
+		state.modal = { type: 'user', userId: userId || null, user: null, sessions: null };
+		renderOverlays();
+		if ( ! userId ) return;
+		api( `wp/v2/users/${ userId }?context=edit&_fields=id,name,email,roles,username` )
+			.then( ( u ) => {
+				if ( state.modal && state.modal.type === 'user' && state.modal.userId === userId ) {
+					state.modal.user = u;
+					renderOverlays();
+				}
+			} )
+			.catch( ( e ) => { toast( e.message, true ); closeModal(); } );
+		api( `minn-admin/v1/users/${ userId }/sessions` )
+			.then( ( r ) => {
+				if ( state.modal && state.modal.type === 'user' && state.modal.userId === userId ) {
+					state.modal.sessions = r.sessions;
+					renderOverlays();
+				}
+			} )
+			.catch( () => {
+				if ( state.modal && state.modal.type === 'user' ) {
+					state.modal.sessions = [];
+					renderOverlays();
+				}
+			} );
+	}
+
+	function generatePassword() {
+		const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*';
+		const buf = new Uint32Array( 20 );
+		crypto.getRandomValues( buf );
+		return Array.from( buf, ( n ) => chars[ n % chars.length ] ).join( '' );
+	}
+
+	function bindUserModal( m ) {
+		if ( ! $( '#minn-uf-save' ) ) return; // still in the loading state
+		const isNew = ! m.userId;
+		const gen = $( '#minn-uf-genpass' );
+		if ( gen ) {
+			gen.addEventListener( 'click', () => {
+				const input = $( '#minn-uf-password' );
+				input.value = generatePassword();
+				input.type = 'text';
+			} );
+		}
+
+		$( '#minn-uf-save' ).addEventListener( 'click', async ( e ) => {
+			const btn = e.currentTarget;
+			btn.disabled = true;
+			const payload = {
+				name: $( '#minn-uf-name' ).value.trim(),
+				email: $( '#minn-uf-email' ).value.trim(),
+			};
+			if ( B.caps.promoteUsers ) payload.roles = [ $( '#minn-uf-role' ).value ];
+			const password = $( '#minn-uf-password' ).value;
+			if ( password ) payload.password = password;
+			try {
+				if ( isNew ) {
+					payload.username = $( '#minn-uf-username' ).value.trim();
+					if ( ! payload.username || ! payload.email || ! password ) {
+						throw new Error( 'Username, email and password are required.' );
+					}
+					await api( 'wp/v2/users', { method: 'POST', body: JSON.stringify( payload ) } );
+					toast( 'User created' );
+				} else {
+					await api( `wp/v2/users/${ m.userId }`, { method: 'POST', body: JSON.stringify( payload ) } );
+					toast( 'User updated' );
+				}
+				closeModal();
+				state.cache.users = null;
+				if ( state.route === 'users' ) renderUsers();
+			} catch ( err ) {
+				toast( err.message, true );
+				btn.disabled = false;
+			}
+		} );
+
+		const del = $( '#minn-uf-delete' );
+		if ( del ) {
+			del.addEventListener( 'click', async () => {
+				const name = m.user ? m.user.name : 'this user';
+				if ( ! confirm( `Delete ${ name }? Their content will be reassigned to you.` ) ) return;
+				del.disabled = true;
+				try {
+					await api( `wp/v2/users/${ m.userId }?force=true&reassign=${ B.user.id }`, { method: 'DELETE' } );
+					toast( 'User deleted' );
+					closeModal();
+					state.cache.users = null;
+					if ( state.route === 'users' ) renderUsers();
+				} catch ( err ) {
+					toast( err.message, true );
+					del.disabled = false;
+				}
+			} );
+		}
+
+		$$( '[data-kill]' ).forEach( ( btn ) =>
+			btn.addEventListener( 'click', async () => {
+				btn.disabled = true;
+				try {
+					await api( `minn-admin/v1/users/${ m.userId }/sessions/${ btn.dataset.kill }`, { method: 'DELETE' } );
+					toast( 'Session signed out' );
+					m.sessions = m.sessions.filter( ( sess ) => sess.verifier !== btn.dataset.kill );
+					renderOverlays();
+				} catch ( err ) {
+					toast( err.message, true );
+					btn.disabled = false;
+				}
+			} )
+		);
+
+		const killAll = $( '#minn-uf-killall' );
+		if ( killAll ) {
+			killAll.addEventListener( 'click', async () => {
+				if ( ! confirm( 'Sign this user out of all sessions?' ) ) return;
+				killAll.disabled = true;
+				try {
+					await api( `minn-admin/v1/users/${ m.userId }/sessions`, { method: 'DELETE' } );
+					toast( 'Signed out everywhere' );
+					m.sessions = m.sessions.filter( ( sess ) => sess.current );
+					renderOverlays();
+				} catch ( err ) {
+					toast( err.message, true );
+					killAll.disabled = false;
+				}
+			} );
 		}
 	}
 
@@ -2156,26 +2653,30 @@
 			case 'extensions': return renderExtensions();
 			case 'settings': return renderSettings();
 			case 'editor': return renderEditor();
-			default: return renderOverview();
+			default:
+				if ( surfaceById( state.route ) ) return renderSurface( surfaceById( state.route ) );
+				return renderOverview();
 		}
 	}
 
 	/* ===== Boot ===== */
 
 	function boot() {
+		// Migrate legacy #/route links onto path routing.
+		if ( PATH_MODE ) {
+			if ( location.hash.startsWith( '#/' ) ) {
+				setPath( location.hash.replace( /^#\//, '' ), true );
+			} else if ( location.pathname + '/' === BASE ) {
+				history.replaceState( null, '', BASE );
+			}
+		}
+
 		renderShell();
 		parseHash();
 		renderView();
 
-		window.addEventListener( 'hashchange', () => {
-			const prevRoute = state.route;
-			const prevId = state.editorId;
-			parseHash();
-			if ( state.route !== 'editor' || prevRoute !== 'editor' || prevId !== state.editorId ) {
-				if ( state.route === 'editor' && prevRoute !== 'editor' ) state.editor = null;
-				renderView();
-			}
-		} );
+		window.addEventListener( 'popstate', onRouteChange );
+		if ( ! PATH_MODE ) window.addEventListener( 'hashchange', onRouteChange );
 
 		window.addEventListener( 'keydown', ( e ) => {
 			if ( ( e.metaKey || e.ctrlKey ) && e.key.toLowerCase() === 'k' ) {
