@@ -25,9 +25,29 @@
 - **No build step.** The whole app stays a single vanilla-JS file, which is the plugin's core
   architectural bet.
 
+## Block islands — how complex content became safe to edit
+
+The original design locked the whole body when any complex block appeared. That's now replaced
+by **atomic block islands**:
+
+1. `tokenizeBlocks()` splits raw content into top-level segments and verifies the segments
+   reassemble the original byte-for-byte (fails → the old locked mode, now rare).
+2. Simple, attribute-safe blocks become editable HTML. A simple block carrying attributes the
+   serializer can't reproduce (`{"fontSize":"large"}`, image `{"id":…}`) is *not* edited lossily —
+   it becomes an island too (`segmentEditable()` / `EDITABLE_ATTRS`).
+3. Everything else renders as a `contenteditable="false"` island — a bordered card with the block
+   name chip and a static preview — whose original markup is stored verbatim and spliced back
+   unchanged on save. Deleting an island deletes the block; nothing else can happen to it.
+
+The result: text edits flow *around* complex layouts with zero risk to them. Verified by
+byte-comparing nested group/columns and shortcode blocks through a full edit-and-save cycle.
+Known cosmetic effect: the first Minn save normalizes inter-block whitespace to the Gutenberg
+standard blank line.
+
 ## Where the line moves over time
 
-Grow `SIMPLE_BLOCKS` deliberately, one block at a time, only when the contenteditable round-trip
-is proven safe (galleries and embeds are the likely next candidates). Never grow it to chase
-parity — if a site's content is mostly complex layouts, Gutenberg is simply the right tool and
-Minn should be great at everything *around* the editor.
+Grow `SIMPLE_BLOCKS` and `EDITABLE_ATTRS` deliberately, one block/attribute at a time, only when
+the round-trip is proven safe. Islands make the cost of *not* supporting a block small — it still
+displays and survives — so there is no pressure to chase parity. If a site's content is mostly
+complex layouts, Gutenberg is simply the right tool and Minn should be great at everything
+*around* the editor.
