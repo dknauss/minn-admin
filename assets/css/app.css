@@ -274,6 +274,17 @@ a { color: var(--accent2); text-decoration: none; }
 
 /* ===== Editor: view link + history ===== */
 .minn-side-viewlink { display: block; text-align: center; margin-top: 9px; font-size: 13.5px; font-weight: 600; }
+.minn-featured-thumb {
+  width: 100%; aspect-ratio: 16 / 10; border-radius: 9px; background-size: cover;
+  background-position: center; border: 1px solid var(--border);
+}
+.minn-featured-empty {
+  display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+  padding: 22px 10px; border: 1px dashed var(--border2); border-radius: 9px; background: none;
+  color: var(--text3); font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.minn-featured-empty:hover { border-color: var(--accent); color: var(--accent2); }
+
 .minn-trash-link {
   background: none; border: none; color: var(--text3); font-size: 13px; font-weight: 600;
   cursor: pointer; padding: 4px; text-align: center;
@@ -294,6 +305,19 @@ a { color: var(--accent2); text-decoration: none; }
 }
 .minn-revision-preview img { max-width: 100%; height: auto; border-radius: 6px; }
 .minn-revision-preview h1, .minn-revision-preview h2, .minn-revision-preview h3 { font-size: 1.1em; }
+
+/* ===== Themes ===== */
+.minn-theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+.minn-theme { overflow: hidden; }
+.minn-theme.is-active { border-color: var(--accent); }
+.minn-theme-shot {
+  aspect-ratio: 4 / 3; background: var(--panel2); background-size: cover; background-position: top center;
+  position: relative; border-bottom: 1px solid var(--border);
+}
+.minn-theme-badge { position: absolute; top: 9px; left: 9px; }
+.minn-theme-badge-u { position: absolute; top: 9px; right: 9px; }
+.minn-theme-info { padding: 12px 14px 13px; }
+.minn-theme-actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; min-height: 28px; }
 
 /* ===== Switch ===== */
 .minn-switch {

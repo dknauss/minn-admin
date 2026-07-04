@@ -118,6 +118,7 @@
 		mediaView: 'grid',
 		uploadOpen: false,
 		commentTab: 'hold',
+		extTab: 'plugins',
 		orderTab: 'any',
 		userSearch: '',
 		range: 30,
@@ -137,6 +138,7 @@
 			types: null,
 			media: null,
 			comments: null,
+			themes: null,
 			orders: null,
 			orderSummary: null,
 			users: null,
@@ -262,7 +264,7 @@
 			upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
 			logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
 			globe: '<circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/>',
-			help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+			help: '<circle cx="12" cy="12" r="10"/><text x="12" y="16.5" text-anchor="middle" font-size="12.5" font-weight="650" font-family="inherit" fill="currentColor" stroke-width="0">?</text>',
 		};
 		return `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${ icons[ name ] || '' }</svg>`;
 	}
@@ -1301,7 +1303,23 @@
 		if ( dot ) dot.hidden = ! Object.keys( state.cache.pluginUpdates ).length;
 	}
 
+	const extTabsHtml = () => B.caps.themes ? `
+			<div class="minn-tabs">
+				<button class="minn-tab${ state.extTab === 'plugins' ? ' active' : '' }" data-xtab="plugins">Plugins</button>
+				<button class="minn-tab${ state.extTab === 'themes' ? ' active' : '' }" data-xtab="themes">Themes</button>
+			</div>` : '';
+
+	function bindExtTabs( view ) {
+		$$( '[data-xtab]', view ).forEach( ( btn ) =>
+			btn.addEventListener( 'click', () => {
+				state.extTab = btn.dataset.xtab;
+				renderExtensions();
+			} )
+		);
+	}
+
 	function renderExtensions() {
+		if ( state.extTab === 'themes' && B.caps.themes ) return renderThemes();
 		const view = $( '#minn-view' );
 		const plugins = state.cache.plugins;
 		if ( ! plugins ) {
@@ -1315,6 +1333,7 @@
 
 		view.innerHTML = `
 		<div class="minn-toolbar">
+			${ extTabsHtml() }
 			<div class="minn-toolbar-meta" style="margin-left:0;">${ active } active · ${ plugins.length } installed</div>
 			${ B.caps.install ? `
 				<button class="minn-btn-soft" id="minn-add-plugin" style="margin-left:auto;">${ icon( 'plus' ) } Add plugin</button>` : '' }
@@ -1439,6 +1458,77 @@
 				renderOverlays();
 			} );
 		}
+		bindExtTabs( view );
+	}
+
+	/* ===== Themes ===== */
+
+	async function loadThemes() {
+		state.cache.themes = ( await api( 'minn-admin/v1/themes' ) ).themes;
+	}
+
+	function renderThemes() {
+		const view = $( '#minn-view' );
+		const themes = state.cache.themes;
+		if ( ! themes ) {
+			view.innerHTML = '<div class="minn-loading">Loading themes…</div>';
+			loadThemes().then( renderIfCurrent( 'extensions' ) ).catch( showErr );
+			return;
+		}
+		view.innerHTML = `
+		<div class="minn-toolbar">
+			${ extTabsHtml() }
+			<div class="minn-toolbar-meta">${ themes.length } installed</div>
+		</div>
+		<div class="minn-theme-grid">
+			${ themes.map( ( t, i ) => `
+				<div class="minn-card minn-theme${ t.active ? ' is-active' : '' }" data-theme="${ i }">
+					<div class="minn-theme-shot"${ t.screenshot ? ` style="background-image:url('${ esc( t.screenshot ) }')"` : '' }>
+						${ t.active ? '<span class="minn-status publish minn-theme-badge">Active</span>' : '' }
+						${ t.update ? `<span class="minn-badge-update minn-theme-badge-u">Update ${ esc( t.update ) }</span>` : '' }
+					</div>
+					<div class="minn-theme-info">
+						<div class="minn-row-title">${ esc( t.name ) }</div>
+						<div class="minn-pi-meta">v${ esc( t.version ) }${ t.author ? ' · ' + esc( t.author ) : '' }${ t.parent ? ' · child of ' + esc( t.parent ) : '' }</div>
+						<div class="minn-theme-actions">
+							${ ! t.active ? `<button class="minn-btn-soft" data-tact="activate:${ i }">Activate</button>` : '' }
+							${ t.update && B.caps.updateThemes ? `<button class="minn-badge-update as-btn" data-tact="update:${ i }">Update → ${ esc( t.update ) }</button>` : '' }
+							${ ! t.active && B.caps.deleteThemes ? `<button class="minn-plugin-delete" data-tact="delete:${ i }" title="Delete ${ esc( t.name ) }">${ icon( 'trash' ) }</button>` : '' }
+						</div>
+					</div>
+				</div>` ).join( '' ) }
+		</div>`;
+
+		bindExtTabs( view );
+		$$( '[data-tact]', view ).forEach( ( btn ) =>
+			btn.addEventListener( 'click', async () => {
+				const [ action, idx ] = btn.dataset.tact.split( ':' );
+				const t = themes[ parseInt( idx, 10 ) ];
+				if ( ! t ) return;
+				const confirms = {
+					activate: `Switch the site's theme to “${ t.name }”? This changes how the whole site looks.`,
+					delete: `Delete “${ t.name }”? This removes its files from the server.`,
+				};
+				if ( confirms[ action ] && ! confirm( confirms[ action ] ) ) return;
+				btn.disabled = true;
+				const card = btn.closest( '.minn-theme' );
+				if ( card ) card.classList.add( 'minn-busy' );
+				const verbs = { activate: 'Activating', delete: 'Deleting', update: 'Updating' };
+				toast( `${ verbs[ action ] } ${ t.name }…` );
+				try {
+					const r = await api( 'minn-admin/v1/themes/' + action, {
+						method: 'POST',
+						body: JSON.stringify( { stylesheet: t.stylesheet } ),
+					} );
+					const done = { activate: `${ t.name } is now the active theme`, delete: `${ t.name } deleted`, update: `${ t.name } updated${ r.version ? ' to v' + r.version : '' }` };
+					toast( done[ action ] );
+				} catch ( e ) {
+					toast( e.message, true );
+				}
+				state.cache.themes = null;
+				if ( state.route === 'extensions' ) renderExtensions();
+			} )
+		);
 	}
 
 	async function updateAllPlugins( btn ) {
@@ -1641,7 +1731,7 @@
 	// Blocks whose markup survives a contenteditable round-trip. Anything else
 	// (embeds, columns, custom blocks…) becomes an atomic non-editable island:
 	// preserved byte-for-byte on save, editable text around it.
-	const SIMPLE_BLOCKS = [ 'paragraph', 'heading', 'quote', 'code', 'preformatted', 'list', 'list-item', 'image', 'html', 'separator', 'more' ];
+	const SIMPLE_BLOCKS = [ 'paragraph', 'heading', 'quote', 'code', 'preformatted', 'verse', 'list', 'list-item', 'image', 'table', 'html', 'separator', 'more' ];
 
 	// Split raw post content into top-level segments: {type:'block',name,raw}
 	// and {type:'html',raw} (freeform chunks). Returns null when the comment
@@ -1693,7 +1783,7 @@
 
 	// Attributes the serializer reproduces faithfully; any other attribute on a
 	// simple block turns it into an island so nothing is silently dropped.
-	const EDITABLE_ATTRS = { heading: [ 'level' ], list: [ 'ordered' ] };
+	const EDITABLE_ATTRS = { heading: [ 'level' ], list: [ 'ordered' ], table: [ 'hasFixedLayout' ] };
 
 	function segmentEditable( seg ) {
 		const name = seg.name.replace( /^core\//, '' );
@@ -1771,11 +1861,16 @@
 				pushBlock( 'heading', { level: parseInt( tag[ 1 ], 10 ) }, el.outerHTML );
 			} else if ( tag === 'blockquote' ) {
 				el.classList.add( 'wp-block-quote' );
+				const cite = el.querySelector( ':scope > cite' );
 				const paras = Array.from( el.children ).filter( ( ch ) => ch.tagName === 'P' );
 				const inner = paras.length
 					? paras.map( ( p ) => `<!-- wp:paragraph -->\n${ p.outerHTML }\n<!-- /wp:paragraph -->` ).join( '' )
-					: `<!-- wp:paragraph -->\n<p>${ el.innerHTML }</p>\n<!-- /wp:paragraph -->`;
-				pushBlock( 'quote', null, `<blockquote class="wp-block-quote">${ inner }</blockquote>` );
+					: `<!-- wp:paragraph -->\n<p>${ cite ? '' : el.innerHTML }</p>\n<!-- /wp:paragraph -->`;
+				pushBlock( 'quote', null, `<blockquote class="wp-block-quote">${ inner }${ cite ? cite.outerHTML : '' }</blockquote>` );
+			} else if ( tag === 'pre' && el.classList.contains( 'wp-block-verse' ) ) {
+				pushBlock( 'verse', null, `<pre class="wp-block-verse">${ el.innerHTML }</pre>` );
+			} else if ( tag === 'pre' && el.classList.contains( 'wp-block-preformatted' ) ) {
+				pushBlock( 'preformatted', null, `<pre class="wp-block-preformatted">${ el.innerHTML }</pre>` );
 			} else if ( tag === 'pre' ) {
 				// Plain text so syntax-highlight spans never reach the database;
 				// the language class is preserved (Prism-style, theme-compatible).
@@ -1783,6 +1878,16 @@
 				const text = codeTextOf( code || el );
 				const lang = codeLangOf( el );
 				pushBlock( 'code', null, `<pre class="wp-block-code"><code${ lang !== 'auto' ? ` class="language-${ lang }"` : '' }>${ esc( text ) }</code></pre>` );
+			} else if ( ( tag === 'figure' && el.querySelector( 'table' ) ) || tag === 'table' ) {
+				const table = tag === 'table' ? el : el.querySelector( 'table' );
+				table.removeAttribute( 'data-hl' );
+				const fixed = table.classList.contains( 'has-fixed-layout' );
+				const caption = tag === 'figure' ? el.querySelector( ':scope > figcaption' ) : null;
+				pushBlock(
+					'table',
+					fixed ? { hasFixedLayout: true } : null,
+					`<figure class="wp-block-table"><table${ fixed ? ' class="has-fixed-layout"' : '' }>${ table.innerHTML }</table>${ caption ? caption.outerHTML : '' }</figure>`
+				);
 			} else if ( tag === 'ul' || tag === 'ol' ) {
 				el.classList.add( 'wp-block-list' );
 				const items = Array.from( el.querySelectorAll( ':scope > li' ) )
@@ -1796,9 +1901,10 @@
 			} else if ( tag === 'hr' ) {
 				pushBlock( 'separator', null, '<hr class="wp-block-separator has-alpha-channel-opacity"/>' );
 			} else if ( tag === 'div' || tag === 'section' ) {
-				// Recurse into wrapper divs contenteditable sometimes creates.
-				const t = el.textContent.trim();
-				if ( t || el.querySelector( 'img' ) ) pushBlock( 'html', null, el.outerHTML );
+				// contenteditable wraps things in divs — serialize their children
+				// as if they were top-level instead of dumping raw HTML.
+				const inner = serializeToBlocks( el, islands );
+				if ( inner ) out.push( inner );
 			} else {
 				pushBlock( 'paragraph', null, `<p>${ el.outerHTML }</p>` );
 			}
@@ -1903,6 +2009,8 @@
 		$$( 'pre', container ).forEach( ( pre ) => {
 			if ( ! force && anchorEl && pre.contains( anchorEl ) ) return;
 			if ( pre.closest( '.minn-block-island' ) ) return; // islands stay verbatim
+			// Verse and preformatted blocks are prose, not code.
+			if ( pre.classList.contains( 'wp-block-verse' ) || pre.classList.contains( 'wp-block-preformatted' ) ) return;
 			let code = pre.querySelector( 'code' );
 			const lang = codeLangOf( pre );
 			const text = codeTextOf( code || pre );
@@ -1922,7 +2030,7 @@
 			// content.raw only — asking for content.rendered would run the_content,
 			// which can be slow or fatal if another plugin misbehaves.
 			const extraKeys = panelValueKeys().map( ( k ) => ',' + k ).join( '' );
-			const p = await api( `wp/v2/${ state.editorType }/${ state.editorId }?context=edit&_fields=id,title,content.raw,status,slug,link,categories,date${ extraKeys }` );
+			const p = await api( `wp/v2/${ state.editorType }/${ state.editorId }?context=edit&_fields=id,title,content.raw,status,slug,link,categories,date,featured_media${ extraKeys }` );
 			const raw = ( p.content && p.content.raw ) || '';
 			const mode = editorModeFor( raw );
 			state.editor = {
@@ -1942,7 +2050,20 @@
 				categoryIds: new Set( p.categories || [] ),
 				revisions: null,
 				panels: null,
+				supportsThumb: 'featured_media' in p,
+				featuredMedia: p.featured_media || 0,
+				featuredThumb: null,
 			};
+			if ( p.featured_media ) {
+				api( `wp/v2/media/${ p.featured_media }?_fields=id,source_url,media_details` )
+					.then( ( mItem ) => {
+						if ( state.editor && state.editor.id === p.id ) {
+							state.editor.featuredThumb = ( mItem.media_details && mItem.media_details.sizes && mItem.media_details.sizes.medium && mItem.media_details.sizes.medium.source_url ) || mItem.source_url;
+							renderEditorSide();
+						}
+					} )
+					.catch( () => {} );
+			}
 			state.editor.content = mode === 'blocks' ? buildEditableContent( state.editor, raw )
 				: mode === 'classic' ? miniAutop( raw )
 				: stripBlockComments( raw );
@@ -1981,6 +2102,7 @@
 				id: null, type: 'posts', title: '', content: '', status: 'draft', mode: 'blocks',
 				date: null, newDate: null, slug: '', link: '', savedAt: null, categoryIds: new Set(),
 				revisions: null, panels: null,
+				supportsThumb: true, featuredMedia: 0, featuredThumb: null,
 			};
 			loadEditorPanels( state.editor, null );
 		}
@@ -2020,6 +2142,9 @@
 				payload[ p.desc.writeKey ] = ed.panelValues[ p.desc.id ];
 			}
 		} );
+		if ( ed.featuredDirty ) {
+			payload.featured_media = ed.featuredMedia || 0;
+		}
 		try {
 			let p;
 			if ( ed.id ) {
@@ -2038,6 +2163,7 @@
 			if ( payload.date ) ed.newDate = null;
 			ed.savedAt = Date.now();
 			ed.panelDirty = {};
+			ed.featuredDirty = false;
 			state.cache.content = null;
 			renderEditorSide();
 			renderTopbar();
@@ -2153,6 +2279,17 @@
 			<button class="minn-btn-primary" id="minn-publish-btn">${ publishLabel( ed ) }</button>
 			${ ed.id && ed.link ? `<a class="minn-side-viewlink" href="${ esc( ed.status === 'publish' ? ed.link : ed.link + ( ed.link.includes( '?' ) ? '&' : '?' ) + 'preview=true' ) }" target="_blank" rel="noopener">${ ed.status === 'publish' ? 'View on site ↗' : 'Preview draft ↗' }</a>` : '' }
 		</div>
+		${ ed.supportsThumb ? `
+		<div class="minn-side-card">
+			<div class="minn-side-title">Featured image</div>
+			${ ed.featuredMedia && ed.featuredThumb ? `
+			<div class="minn-featured-thumb" style="background-image:url('${ esc( ed.featuredThumb ) }')"></div>
+			<div style="display:flex; gap:8px; margin-top:10px;">
+				<button class="minn-btn-soft" id="minn-featured-set">Replace</button>
+				<button class="minn-btn-soft danger" id="minn-featured-remove">Remove</button>
+			</div>` : ed.featuredMedia ? '<div class="minn-session-empty">Loading…</div>' : `
+			<button class="minn-featured-empty" id="minn-featured-set">${ icon( 'img' ) } Set featured image</button>` }
+		</div>` : '' }
 		${ ed.revisions && ed.revisions.length ? `
 		<div class="minn-side-card">
 			<div class="minn-side-title">History</div>
@@ -2220,6 +2357,27 @@
 		$$( '[data-rev]', el ).forEach( ( btn ) =>
 			btn.addEventListener( 'click', () => openRevision( ed, parseInt( btn.dataset.rev, 10 ) ) )
 		);
+
+		const featSet = $( '#minn-featured-set', el );
+		if ( featSet ) {
+			featSet.addEventListener( 'click', () => openMediaPicker( ( it ) => {
+				ed.featuredMedia = it.id;
+				ed.featuredThumb = it.thumb;
+				ed.featuredDirty = true;
+				renderEditorSide();
+				if ( ed.id ) scheduleAutosave();
+			} ) );
+		}
+		const featRemove = $( '#minn-featured-remove', el );
+		if ( featRemove ) {
+			featRemove.addEventListener( 'click', () => {
+				ed.featuredMedia = 0;
+				ed.featuredThumb = null;
+				ed.featuredDirty = true;
+				renderEditorSide();
+				if ( ed.id ) scheduleAutosave();
+			} );
+		}
 
 		$( '#minn-schedule-input', el ).addEventListener( 'change', ( e ) => {
 			state.editor.newDate = e.target.value || null;
@@ -2414,7 +2572,8 @@
 			[ '•', 'Bulleted list', () => document.execCommand( 'insertUnorderedList', false, null ) ],
 			[ '1.', 'Numbered list', () => document.execCommand( 'insertOrderedList', false, null ) ],
 			[ '🖼', 'Image', 'image' ],
-			[ '—', 'Divider', () => document.execCommand( 'insertHTML', false, '<hr><p><br></p>' ) ],
+			[ '▦', 'Table', { html: '<figure class="wp-block-table"><table class="has-fixed-layout"><tbody><tr><td>&nbsp;</td><td>&nbsp;</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td></tr></tbody></table></figure>' } ],
+			[ '—', 'Divider', { html: '<hr>' } ],
 		];
 
 		const close = () => {
@@ -2433,18 +2592,35 @@
 			if ( ! item || ! block ) return close();
 			const target = block;
 			close();
+			body.focus();
+			const action = item[ 2 ];
+			if ( action && action.html ) {
+				// Replace the "/" block outright so the inserted markup lands at
+				// the top level (never wrapped inside the block's div).
+				target.insertAdjacentHTML( 'beforebegin', action.html );
+				const p = document.createElement( 'p' );
+				p.appendChild( document.createElement( 'br' ) );
+				target.replaceWith( p );
+				const range = document.createRange();
+				range.selectNodeContents( p );
+				range.collapse( true );
+				const sel = window.getSelection();
+				sel.removeAllRanges();
+				sel.addRange( range );
+				scheduleAutosave();
+				return;
+			}
 			// Clear the "/" and put the caret back in the emptied block.
 			target.textContent = '';
-			if ( target.tagName !== 'BR' && ! target.childNodes.length ) target.appendChild( document.createElement( 'br' ) );
-			body.focus();
+			if ( ! target.childNodes.length ) target.appendChild( document.createElement( 'br' ) );
 			const range = document.createRange();
 			range.selectNodeContents( target );
 			range.collapse( true );
 			const sel = window.getSelection();
 			sel.removeAllRanges();
 			sel.addRange( range );
-			if ( item[ 2 ] === 'image' ) insertImage();
-			else item[ 2 ]();
+			if ( action === 'image' ) insertImage();
+			else action();
 			scheduleAutosave();
 		};
 
@@ -2897,9 +3073,9 @@
 						<button class="minn-x-btn" id="minn-modal-close">×</button>
 					</div>
 					<div class="minn-help-body">
-						<p><b>Minn is a reimagined WordPress admin</b> — a calm, fast surface for the work you
-						actually do every day: writing, moderating, uploading, keeping an eye on the site.
-						The classic wp-admin stays fully available; Minn is additive, never a cage.</p>
+						<p><b>Minn is a reimagined WordPress admin.</b> It is a calm, fast surface for the
+						work you actually do every day: writing, moderating, uploading, and keeping an eye
+						on the site. The classic wp-admin stays fully available. Minn is additive, never a cage.</p>
 
 						<h4>Get out of the way</h4>
 						<p>No boxes within boxes, no meta panels fighting for attention. The daily loop is one
@@ -2907,19 +3083,19 @@
 
 						<h4>Configuration belongs to your AI agent</h4>
 						<p>Minn deliberately doesn't rebuild every settings screen. Need to configure ACF,
-						Gravity Forms, an SEO plugin? Open <b>your account → AI Access</b>, generate an
+						Gravity Forms, or an SEO plugin? Open <b>your account → AI Access</b>, generate an
 						application password, and hand your agent the generated guide. The agent does the
-						fiddly work over the REST API — with its own revocable credential, never your login —
+						fiddly work over the REST API using its own revocable credential, never your login,
 						while Minn stays minimal.</p>
 
 						<h4>Nothing is ever locked in</h4>
 						<p>Everything Minn writes is native WordPress: real Gutenberg block markup, core
-						options, core REST calls. Complex block layouts are preserved byte-for-byte as
+						options, core REST calls. Complex block layouts are preserved byte for byte as
 						read-only islands while you edit the text around them. Deactivate the plugin and
 						nothing is lost.</p>
 
 						<h4>Extensible by description, not code</h4>
-						<p>Plugins add views and editor panels with a single PHP filter — no JavaScript, no
+						<p>Plugins add views and editor panels with a single PHP filter. No JavaScript, no
 						build step. Gravity Forms, Gravity SMTP and ACF adapters ship built in.</p>
 					</div>
 					<div class="minn-modal-actions">

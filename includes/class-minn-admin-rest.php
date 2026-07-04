@@ -109,6 +109,43 @@ class Minn_Admin_REST {
 
 		register_rest_route(
 			self::NS,
+			'/themes',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( __CLASS__, 'list_themes' ),
+				'permission_callback' => function () {
+					return current_user_can( 'switch_themes' );
+				},
+			)
+		);
+
+		foreach ( array( 'activate', 'delete', 'update' ) as $theme_action ) {
+			register_rest_route(
+				self::NS,
+				'/themes/' . $theme_action,
+				array(
+					'methods'             => 'POST',
+					'callback'            => array( __CLASS__, 'theme_' . $theme_action ),
+					'permission_callback' => function () use ( $theme_action ) {
+						$caps = array(
+							'activate' => 'switch_themes',
+							'delete'   => 'delete_themes',
+							'update'   => 'update_themes',
+						);
+						return current_user_can( $caps[ $theme_action ] );
+					},
+					'args'                => array(
+						'stylesheet' => array(
+							'type'     => 'string',
+							'required' => true,
+						),
+					),
+				)
+			);
+		}
+
+		register_rest_route(
+			self::NS,
 			'/plugins/search',
 			array(
 				'methods'             => 'GET',
@@ -521,6 +558,88 @@ class Minn_Admin_REST {
 		unset( $tokens[ $verifier ] );
 		update_user_meta( $uid, 'session_tokens', $tokens );
 		return rest_ensure_response( array( 'ok' => true ) );
+	}
+
+	/**
+	 * Installed themes with active state, screenshots and update availability.
+	 */
+	public static function list_themes() {
+		$updates    = get_site_transient( 'update_themes' );
+		$active     = get_stylesheet();
+		$items      = array();
+		foreach ( wp_get_themes() as $stylesheet => $theme ) {
+			$items[] = array(
+				'stylesheet' => $stylesheet,
+				'name'       => $theme->get( 'Name' ),
+				'version'    => $theme->get( 'Version' ),
+				'author'     => wp_strip_all_tags( $theme->get( 'Author' ) ),
+				'screenshot' => $theme->get_screenshot() ?: '',
+				'active'     => $stylesheet === $active,
+				'parent'     => $theme->parent() ? $theme->parent()->get_stylesheet() : null,
+				'update'     => $updates && isset( $updates->response[ $stylesheet ]['new_version'] )
+					? $updates->response[ $stylesheet ]['new_version'] : null,
+			);
+		}
+		usort( $items, function ( $a, $b ) {
+			return $b['active'] <=> $a['active'] ?: strcasecmp( $a['name'], $b['name'] );
+		} );
+		return rest_ensure_response( array( 'themes' => $items ) );
+	}
+
+	private static function get_valid_theme( $stylesheet ) {
+		$theme = wp_get_theme( $stylesheet );
+		return $theme->exists() ? $theme : null;
+	}
+
+	public static function theme_activate( WP_REST_Request $request ) {
+		$stylesheet = sanitize_text_field( $request['stylesheet'] );
+		$theme      = self::get_valid_theme( $stylesheet );
+		if ( ! $theme ) {
+			return new WP_Error( 'not_found', 'Theme not found.', array( 'status' => 404 ) );
+		}
+		switch_theme( $stylesheet );
+		return rest_ensure_response( array( 'active' => get_stylesheet() ) );
+	}
+
+	public static function theme_delete( WP_REST_Request $request ) {
+		$stylesheet = sanitize_text_field( $request['stylesheet'] );
+		if ( ! self::get_valid_theme( $stylesheet ) ) {
+			return new WP_Error( 'not_found', 'Theme not found.', array( 'status' => 404 ) );
+		}
+		if ( get_stylesheet() === $stylesheet || get_template() === $stylesheet ) {
+			return new WP_Error( 'theme_in_use', 'The active theme (or its parent) cannot be deleted.', array( 'status' => 400 ) );
+		}
+		require_once ABSPATH . 'wp-admin/includes/theme.php';
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+		require_once ABSPATH . 'wp-admin/includes/misc.php';
+		$result = delete_theme( $stylesheet );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+		return rest_ensure_response( array( 'deleted' => true ) );
+	}
+
+	public static function theme_update( WP_REST_Request $request ) {
+		$stylesheet = sanitize_text_field( $request['stylesheet'] );
+		require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+		require_once ABSPATH . 'wp-admin/includes/theme.php';
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+		require_once ABSPATH . 'wp-admin/includes/misc.php';
+
+		wp_update_themes();
+		$updates = get_site_transient( 'update_themes' );
+		if ( ! $updates || empty( $updates->response[ $stylesheet ] ) ) {
+			return new WP_Error( 'no_update', 'No update available for that theme.', array( 'status' => 400 ) );
+		}
+		$skin     = new WP_Ajax_Upgrader_Skin();
+		$upgrader = new Theme_Upgrader( $skin );
+		$result   = $upgrader->upgrade( $stylesheet );
+		if ( ! $result || is_wp_error( $result ) ) {
+			$errors = $skin->get_error_messages();
+			return new WP_Error( 'update_failed', $errors ? implode( ' ', (array) $errors ) : 'Update failed.', array( 'status' => 500 ) );
+		}
+		$theme = wp_get_theme( $stylesheet );
+		return rest_ensure_response( array( 'updated' => true, 'version' => $theme->get( 'Version' ) ) );
 	}
 
 	/**
