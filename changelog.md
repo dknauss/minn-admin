@@ -9,8 +9,11 @@
 * **Plugin installs:** An "Add plugin" modal on Extensions with a WordPress.org search picker (server-side proxy — the app never talks to external hosts), install/activate in place, and zip upload via drag-and-drop or file picker.
 * **AI Access:** Your account now manages **application passwords** — create a revocable credential for an AI agent (shown once, with copy-password and copy-curl buttons) and revoke any credential — plus a generated **agent guide**: a markdown REST reference tailored to what's installed on the site (core routes, WooCommerce, Gravity Forms, ACF, Minn extras), ready to hand to a coding agent.
 * **Notifications:** Individual notifications mark read on click and navigate to the thing they're about (comments → moderation, updates → Extensions, new users → Users).
+* **About Minn:** A help icon in the topbar (and ⌘K entry) opens the philosophy page — what Minn is for, the AI-agent configuration model, and the no-lock-in guarantees — with links to the docs.
 
 ### Fixed
+* Plugin names are cleaned of keyword-stuffed suffixes everywhere ("Rank Math SEO", not "Rank Math SEO – AI SEO Tools to Dominate SEO Rankings") and HTML entities are decoded in wp.org search results; full names remain available on hover.
+* Panels and modals no longer replay their entrance animation on every re-render — the notification panel opened with a double flash and flashed on tab switches, and the plugin-search modal flashed on each keystroke.
 * Line breaks inside code blocks (entered as `<br>` by the browser) are preserved when saving.
 * Classic-content saves now strip syntax-highlight decoration from code blocks before writing to the database.
 * Elementor's internal post types (templates, floating elements) no longer appear as Content tabs.

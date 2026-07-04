@@ -560,8 +560,8 @@ class Minn_Admin_REST {
 			$icons   = isset( $p['icons'] ) ? (array) $p['icons'] : array();
 			$items[] = array(
 				'slug'        => $p['slug'],
-				'name'        => wp_strip_all_tags( $p['name'] ),
-				'description' => wp_strip_all_tags( isset( $p['short_description'] ) ? $p['short_description'] : '' ),
+				'name'        => html_entity_decode( wp_strip_all_tags( $p['name'] ), ENT_QUOTES ),
+				'description' => html_entity_decode( wp_strip_all_tags( isset( $p['short_description'] ) ? $p['short_description'] : '' ), ENT_QUOTES ),
 				'installs'    => isset( $p['active_installs'] ) ? (int) $p['active_installs'] : 0,
 				'rating'      => isset( $p['rating'] ) ? (int) $p['rating'] : 0,
 				'version'     => isset( $p['version'] ) ? $p['version'] : '',

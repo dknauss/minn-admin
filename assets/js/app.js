@@ -74,6 +74,12 @@
 		return ( n >= 10 || i === 0 ? Math.round( n ) : n.toFixed( 1 ) ) + ' ' + units[ i ];
 	}
 
+	// wp.org plugin titles are keyword-stuffed ("Rank Math SEO – AI SEO Tools
+	// to Dominate…"). Keep everything before the first separator.
+	function cleanPluginName( name ) {
+		return decodeEntities( name || '' ).split( /\s+[–—|:]\s*|\s+-\s+|\s*[({]/ )[ 0 ].trim() || name;
+	}
+
 	const PALETTE_COLORS = [ '#46b881', '#5b9be0', '#e0a458', '#d073c0', '#8a80f8', '#e46b6b' ];
 	const colorFor = ( s ) => {
 		let h = 0;
@@ -256,6 +262,7 @@
 			upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
 			logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
 			globe: '<circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/>',
+			help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
 		};
 		return `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${ icons[ name ] || '' }</svg>`;
 	}
@@ -326,6 +333,7 @@
 					<div class="minn-topbar-sub" id="minn-sub"></div>
 					<div class="minn-topbar-actions">
 						<a class="minn-icon-btn" id="minn-view-site" href="${ esc( B.site.url ) }" target="_blank" rel="noopener" title="View site">${ icon( 'globe' ) }</a>
+						<button class="minn-icon-btn" id="minn-help-btn" title="About Minn">${ icon( 'help' ) }</button>
 						<button class="minn-icon-btn" id="minn-theme-btn" title="Toggle theme"></button>
 						<button class="minn-icon-btn" id="minn-notif-btn" title="Notifications">
 							${ icon( 'bell' ) }<span class="minn-unread-dot" id="minn-unread-dot" hidden></span>
@@ -348,6 +356,7 @@
 			openUserModal( B.user.id );
 		} );
 		$( '#minn-theme-btn' ).addEventListener( 'click', toggleTheme );
+		$( '#minn-help-btn' ).addEventListener( 'click', () => { state.modal = { type: 'help' }; renderOverlays(); } );
 		$( '#minn-notif-btn' ).addEventListener( 'click', toggleNotif );
 		$( '#minn-new-btn' ).addEventListener( 'click', () => { state.editorId = null; state.editorType = 'posts'; go( 'editor' ); } );
 		renderThemeBtn();
@@ -1316,7 +1325,7 @@
 		</div>
 		<div class="minn-plugin-grid">
 			${ plugins.map( ( p ) => {
-				const name = decodeEntities( p.name );
+				const name = cleanPluginName( p.name );
 				const hasUpdate = !! updates[ p.plugin + '.php' ];
 				const on = p.status === 'active';
 				return `
@@ -1353,14 +1362,14 @@
 				btn.disabled = true;
 				const card = btn.closest( '.minn-plugin' );
 				if ( card ) card.classList.add( 'minn-busy' );
-				toast( `${ activating ? 'Activating' : 'Deactivating' } ${ decodeEntities( plugin.name ) }…` );
+				toast( `${ activating ? 'Activating' : 'Deactivating' } ${ cleanPluginName( plugin.name ) }…` );
 				try {
 					await api( 'wp/v2/plugins/' + file, {
 						method: 'PUT',
 						body: JSON.stringify( { status: activating ? 'active' : 'inactive' } ),
 					} );
 					plugin.status = activating ? 'active' : 'inactive';
-					toast( decodeEntities( plugin.name ) + ( activating ? ' activated' : ' deactivated' ) );
+					toast( cleanPluginName( plugin.name ) + ( activating ? ' activated' : ' deactivated' ) );
 					if ( file === 'minn-admin/minn-admin' && ! activating ) {
 						window.location.href = B.site.adminUrl;
 						return;
@@ -1376,7 +1385,7 @@
 			btn.addEventListener( 'click', async () => {
 				const file = btn.dataset.update;
 				const plugin = plugins.find( ( p ) => p.plugin === file );
-				const name = decodeEntities( plugin.name );
+				const name = cleanPluginName( plugin.name );
 				btn.disabled = true;
 				const card = btn.closest( '.minn-plugin' );
 				if ( card ) card.classList.add( 'minn-busy' );
@@ -1400,7 +1409,7 @@
 			btn.addEventListener( 'click', async () => {
 				const file = btn.dataset.del;
 				const plugin = plugins.find( ( p ) => p.plugin === file );
-				const name = decodeEntities( plugin.name );
+				const name = cleanPluginName( plugin.name );
 				if ( ! confirm( `Delete “${ name }”? This removes its files from the server.` ) ) return;
 				btn.disabled = true;
 				const card = btn.closest( '.minn-plugin' );
@@ -2583,6 +2592,7 @@
 			cmds.push( { label: 'Update all plugins', kind: 'action', icon: '⟳', run: () => updateAllPlugins( null ) } );
 		}
 		cmds.push(
+			{ label: 'About Minn — philosophy & help', kind: 'link', icon: '?', run: () => { state.modal = { type: 'help' }; renderOverlays(); } },
 			{ label: 'Visit site', kind: 'link', icon: '↗', run: () => window.open( B.site.url, '_blank' ) },
 			{ label: 'Classic wp-admin', kind: 'link', icon: 'W', run: () => window.open( B.site.adminUrl, '_blank' ) },
 			{ label: 'Log out', kind: 'link', icon: '⎋', run: () => { window.location.href = B.site.logout; } },
@@ -2877,6 +2887,50 @@
 			return renderRevisionModal( m );
 		}
 
+		if ( m.type === 'help' ) {
+			return `
+			<div class="minn-modal-overlay" id="minn-modal-overlay">
+				<div class="minn-modal">
+					<div class="minn-modal-head">
+						<div class="minn-modal-title">About Minn</div>
+						<span class="minn-panel-sub">v${ esc( B.version ) }</span>
+						<button class="minn-x-btn" id="minn-modal-close">×</button>
+					</div>
+					<div class="minn-help-body">
+						<p><b>Minn is a reimagined WordPress admin</b> — a calm, fast surface for the work you
+						actually do every day: writing, moderating, uploading, keeping an eye on the site.
+						The classic wp-admin stays fully available; Minn is additive, never a cage.</p>
+
+						<h4>Get out of the way</h4>
+						<p>No boxes within boxes, no meta panels fighting for attention. The daily loop is one
+						click away and visually quiet. Press <span class="minn-kbd">⌘K</span> anywhere.</p>
+
+						<h4>Configuration belongs to your AI agent</h4>
+						<p>Minn deliberately doesn't rebuild every settings screen. Need to configure ACF,
+						Gravity Forms, an SEO plugin? Open <b>your account → AI Access</b>, generate an
+						application password, and hand your agent the generated guide. The agent does the
+						fiddly work over the REST API — with its own revocable credential, never your login —
+						while Minn stays minimal.</p>
+
+						<h4>Nothing is ever locked in</h4>
+						<p>Everything Minn writes is native WordPress: real Gutenberg block markup, core
+						options, core REST calls. Complex block layouts are preserved byte-for-byte as
+						read-only islands while you edit the text around them. Deactivate the plugin and
+						nothing is lost.</p>
+
+						<h4>Extensible by description, not code</h4>
+						<p>Plugins add views and editor panels with a single PHP filter — no JavaScript, no
+						build step. Gravity Forms, Gravity SMTP and ACF adapters ship built in.</p>
+					</div>
+					<div class="minn-modal-actions">
+						<a class="minn-btn-soft" href="https://github.com/austinginder/minn-admin" target="_blank" rel="noopener">↗ GitHub</a>
+						<a class="minn-btn-soft" href="https://github.com/austinginder/minn-admin/blob/main/docs/goals.md" target="_blank" rel="noopener">↗ Project goals</a>
+						<a class="minn-btn-soft" href="https://github.com/austinginder/minn-admin/blob/main/docs/for-plugin-authors.md" target="_blank" rel="noopener">↗ For plugin authors</a>
+					</div>
+				</div>
+			</div>`;
+		}
+
 		if ( m.type === 'plugin-install' ) {
 			const installedNow = ( slug ) => ( state.cache.plugins || [] ).find( ( p ) => p.plugin.split( '/' )[ 0 ] === slug );
 			return `
@@ -2905,7 +2959,7 @@
 								<div class="minn-pi-row">
 									${ p.icon ? `<img class="minn-pi-icon" src="${ esc( p.icon ) }" alt="">` : '<div class="minn-pi-icon"></div>' }
 									<div class="minn-pi-info">
-										<div class="minn-row-title">${ esc( p.name ) }</div>
+										<div class="minn-row-title" title="${ esc( p.name ) }">${ esc( cleanPluginName( p.name ) ) }</div>
 										<div class="minn-pi-meta">${ p.installs ? Number( p.installs ).toLocaleString() + '+ installs · ' : '' }v${ esc( p.version ) }</div>
 										<div class="minn-pi-desc">${ esc( p.description ) }</div>
 									</div>
@@ -3479,7 +3533,19 @@
 
 	function renderOverlays() {
 		const root = $( '#minn-overlays' );
+		// Remember what was already on screen: re-renders of an open panel/modal
+		// must not replay their entrance animation (it reads as a flash).
+		const had = {
+			'.minn-notif-panel': !! $( '.minn-notif-panel', root ),
+			'.minn-palette': !! $( '.minn-palette', root ),
+			'.minn-modal': !! $( '.minn-modal', root ),
+		};
 		root.innerHTML = ( state.notifOpen ? renderNotifPanel() : '' ) + ( state.paletteOpen ? renderPalette() : '' ) + renderModal();
+		Object.keys( had ).forEach( ( sel ) => {
+			if ( ! had[ sel ] ) return;
+			const el = $( sel, root );
+			if ( el ) el.classList.add( 'no-anim' );
+		} );
 		bindModal();
 
 		if ( state.notifOpen ) {
