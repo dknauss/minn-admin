@@ -402,7 +402,9 @@
 			loadOverview().then( renderIfCurrent( 'overview' ) ).catch( showErr );
 			return;
 		}
-		const max = Math.max( 1, ...o.chart.map( ( c ) => c.value ) );
+		const chartData = o.traffic ? o.traffic.chart : o.chart;
+		const max = Math.max( 1, ...chartData.map( ( c ) => c.value ) );
+		const deltaCls = ( up ) => up === true ? ' up' : ( up === 'warn' ? ' warn' : ( up === 'down' ? ' down' : '' ) );
 		view.innerHTML = `
 		<div class="minn-dash-head">
 			<div>
@@ -415,19 +417,19 @@
 				<div class="minn-card minn-stat">
 					<div class="minn-stat-label">${ esc( s.label ) }</div>
 					<div class="minn-stat-value">${ esc( s.value ) }</div>
-					<div class="minn-stat-delta${ s.up === true ? ' warn' : '' }">${ esc( s.delta ) }</div>
+					<div class="minn-stat-delta${ deltaCls( s.up ) }">${ esc( s.delta ) }</div>
 				</div>` ).join( '' ) }
 		</div>
 		<div class="minn-dash-grid">
 			<div class="minn-card minn-panel-pad">
 				<div class="minn-chart-head">
-					<div class="minn-panel-title">Activity</div>
+					<div class="minn-panel-title">${ o.traffic ? 'Traffic' : 'Activity' }${ o.traffic ? ` <span class="minn-panel-sub">${ esc( o.traffic.source ) }</span>` : '' }</div>
 					<div class="minn-range-tabs">
 						${ [ 7, 30, 90 ].map( ( d ) => `<button class="minn-range-tab${ state.range === d ? ' active' : '' }" data-range="${ d }">${ d }d</button>` ).join( '' ) }
 					</div>
 				</div>
 				<div class="minn-chart">
-					${ o.chart.map( ( c, i ) => `<div class="minn-chart-bar${ i === o.chart.length - 1 ? ' last' : '' }" style="height:${ Math.max( 3, Math.round( ( c.value / max ) * 100 ) ) }%" title="${ esc( c.label ) }"></div>` ).join( '' ) }
+					${ chartData.map( ( c, i ) => `<div class="minn-chart-bar${ i === chartData.length - 1 ? ' last' : '' }" style="height:${ Math.max( 3, Math.round( ( c.value / max ) * 100 ) ) }%" title="${ esc( c.label ) }"></div>` ).join( '' ) }
 				</div>
 			</div>
 			<div class="minn-card minn-panel-pad">

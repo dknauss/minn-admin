@@ -29,6 +29,7 @@ require_once MINN_ADMIN_DIR . 'includes/class-minn-admin-updater.php';
 require_once MINN_ADMIN_DIR . 'includes/adapters/gravity-forms.php';
 require_once MINN_ADMIN_DIR . 'includes/adapters/gravity-smtp.php';
 require_once MINN_ADMIN_DIR . 'includes/adapters/acf.php';
+require_once MINN_ADMIN_DIR . 'includes/adapters/koko-analytics.php';
 
 Minn_Admin::init();
 Minn_Admin_REST::init();

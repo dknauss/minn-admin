@@ -12,11 +12,13 @@
 * **Featured images:** A Featured image card in the editor sidebar with a thumbnail preview, set/replace via the media picker, and remove. Saves through the normal post save and autosave.
 * **Tables, verse and citations in the editor:** Tables are now editable inline (insert a 2×2 via the `/` menu, edit cells directly; `hasFixedLayout` round-trips), verse and preformatted blocks keep their block type on save instead of becoming code blocks, and quote citations (`<cite>`) are preserved.
 * **Theme management:** Extensions gains a Themes tab with screenshots, active/update badges, activate (with confirmation), per-theme update, and delete for inactive themes.
+* **Traffic on the Overview:** A new `minn_admin_traffic` filter lets analytics plugins power the Overview chart. When a provider is active, the Activity chart becomes a real Traffic chart (visitors per day/week with a source badge) and a Visitors stat card with a period-over-period delta leads the dashboard. Ships with a **Koko Analytics** adapter reading its local stats table; sites without an analytics plugin keep the Activity chart.
 * **About Minn:** A help icon in the topbar (and ⌘K entry) opens the philosophy page — what Minn is for, the AI-agent configuration model, and the no-lock-in guarantees — with links to the docs.
 
 ### Fixed
 * Plugin names are cleaned of keyword-stuffed suffixes everywhere ("Rank Math SEO", not "Rank Math SEO – AI SEO Tools to Dominate SEO Rankings") and HTML entities are decoded in wp.org search results; full names remain available on hover.
 * Slash-menu inserts (table, divider, image) land at the top level of the document instead of nested inside the current block's wrapper, and wrapper divs created by contenteditable are serialized as their real child blocks instead of raw HTML.
+* Stat cards flow into a single row regardless of count, and activity entries with invalid modified dates are skipped.
 * Panels and modals no longer replay their entrance animation on every re-render — the notification panel opened with a double flash and flashed on tab switches, and the plugin-search modal flashed on each keystroke.
 * Line breaks inside code blocks (entered as `<br>` by the browser) are preserved when saving.
 * Classic-content saves now strip syntax-highlight decoration from code blocks before writing to the database.

@@ -87,6 +87,33 @@ response (`register_rest_field` or, for ACF, the field group's "Show in REST API
 
 The bundled ACF adapter (`includes/adapters/acf.php`) is the reference implementation.
 
+## Traffic providers — power the Overview chart
+
+Analytics plugins can replace the Overview "Activity" chart with real traffic by answering the
+`minn_admin_traffic` filter. Return daily visitor/pageview counts for the requested range plus
+the previous period's visitor total (used for the delta on the Visitors stat card):
+
+```php
+add_filter( 'minn_admin_traffic', function ( $traffic, $days ) {
+    if ( null !== $traffic ) {
+        return $traffic; // another provider already answered
+    }
+    return array(
+        'source'        => 'My Analytics',
+        'days'          => array( // 'Y-m-d' => counts, covering the last $days days
+            '2026-07-02' => array( 'visitors' => 120, 'pageviews' => 310 ),
+            '2026-07-03' => array( 'visitors' => 141, 'pageviews' => 355 ),
+        ),
+        'prev_visitors' => 2210,  // visitor total for the $days before that
+    );
+}, 10, 2 );
+```
+
+Minn buckets the days to match the selected range (daily up to 45 days, weekly beyond), renders
+the Traffic chart with your plugin's name as the source badge, and leads the stat cards with
+Visitors and a period-over-period delta. The bundled **Koko Analytics** adapter
+(`includes/adapters/koko-analytics.php`) is the reference implementation.
+
 ## No REST API? Ship a shim
 
 If your data lives in custom tables, register a small read-only REST collection and point the

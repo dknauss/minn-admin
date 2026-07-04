@@ -218,6 +218,15 @@ class Minn_Admin_REST {
 		$comments = wp_count_comments();
 		$media    = wp_count_posts( 'attachment' );
 
+		/**
+		 * Traffic providers (analytics plugins) hook `minn_admin_traffic` and
+		 * return ['source' => 'Koko Analytics', 'days' => ['Y-m-d' => ['visitors' => int,
+		 * 'pageviews' => int]], 'prev_visitors' => int] covering the requested
+		 * range (prev_visitors = the period before it, for the delta).
+		 */
+		$traffic     = apply_filters( 'minn_admin_traffic', null, $days );
+		$traffic_out = null;
+
 		$stats = array(
 			array(
 				'label' => 'Published posts',
@@ -235,7 +244,7 @@ class Minn_Admin_REST {
 				'label' => 'Comments',
 				'value' => number_format_i18n( (int) $comments->approved ),
 				'delta' => (int) $comments->moderated . ' pending',
-				'up'    => (int) $comments->moderated > 0,
+				'up'    => (int) $comments->moderated > 0 ? 'warn' : null,
 			),
 			array(
 				'label' => 'Media files',
@@ -283,6 +292,57 @@ class Minn_Admin_REST {
 			);
 		}
 
+		// When an analytics provider responded, bucket its daily numbers the
+		// same way and lead the stats with a Visitors card.
+		if ( is_array( $traffic ) && ! empty( $traffic['days'] ) ) {
+			$tseries = array_fill( 0, $buckets, array( 'v' => 0, 'p' => 0 ) );
+			$visitors  = 0;
+			$pageviews = 0;
+			foreach ( $traffic['days'] as $date => $row ) {
+				$age = time() - strtotime( $date . ' 12:00:00 UTC' );
+				$idx = $buckets - 1 - (int) floor( $age / ( $bucket_days * DAY_IN_SECONDS ) );
+				if ( $idx < 0 || $idx >= $buckets ) {
+					continue;
+				}
+				$tseries[ $idx ]['v'] += (int) $row['visitors'];
+				$tseries[ $idx ]['p'] += (int) $row['pageviews'];
+				$visitors             += (int) $row['visitors'];
+				$pageviews            += (int) $row['pageviews'];
+			}
+			$tchart = array();
+			foreach ( $tseries as $i => $bucket ) {
+				$offset   = ( $buckets - 1 - $i ) * $bucket_days;
+				$label    = 1 === $bucket_days
+					? date_i18n( 'M j', time() - $offset * DAY_IN_SECONDS )
+					: 'Week of ' . date_i18n( 'M j', time() - ( $offset + $bucket_days - 1 ) * DAY_IN_SECONDS );
+				$tchart[] = array(
+					'label' => sprintf( '%s · %s visitors · %s views', $label, number_format_i18n( $bucket['v'] ), number_format_i18n( $bucket['p'] ) ),
+					'value' => $bucket['v'],
+				);
+			}
+
+			$compact = function ( $n ) {
+				return $n >= 10000 ? round( $n / 1000, 1 ) . 'k' : number_format_i18n( $n );
+			};
+			$prev  = isset( $traffic['prev_visitors'] ) ? (int) $traffic['prev_visitors'] : 0;
+			$delta = $prev > 0 ? round( ( $visitors - $prev ) / $prev * 100, 1 ) : null;
+			array_unshift(
+				$stats,
+				array(
+					'label' => 'Visitors',
+					'value' => $compact( $visitors ),
+					'delta' => null !== $delta
+						? ( $delta >= 0 ? '↑ ' : '↓ ' ) . abs( $delta ) . '% vs prior ' . $days . 'd'
+						: $compact( $pageviews ) . ' pageviews',
+					'up'    => null !== $delta ? ( $delta >= 0 ? true : 'down' ) : null,
+				)
+			);
+			$traffic_out = array(
+				'source' => isset( $traffic['source'] ) ? $traffic['source'] : 'Analytics',
+				'chart'  => $tchart,
+			);
+		}
+
 		// Recent activity feed.
 		$activity = array();
 
@@ -295,11 +355,15 @@ class Minn_Admin_REST {
 			)
 		);
 		foreach ( $recent_posts as $p ) {
+			$time = strtotime( $p->post_modified_gmt . ' UTC' );
+			if ( ! $time || $time < 0 ) {
+				continue; // drafts can carry a zeroed modified date
+			}
 			$author = get_the_author_meta( 'display_name', $p->post_author );
 			$verb   = 'publish' === $p->post_status ? 'published' : ( 'future' === $p->post_status ? 'scheduled' : 'drafted' );
 			$activity[] = array(
 				'text'  => sprintf( '%s %s “%s”', $author, $verb, get_the_title( $p ) ),
-				'time'  => strtotime( $p->post_modified_gmt . ' UTC' ),
+				'time'  => $time,
 				'color' => 'publish' === $p->post_status ? 'green' : ( 'future' === $p->post_status ? 'blue' : 'accent' ),
 			);
 		}
@@ -330,6 +394,7 @@ class Minn_Admin_REST {
 			array(
 				'stats'    => $stats,
 				'chart'    => $chart,
+				'traffic'  => $traffic_out,
 				'activity' => $activity,
 				'greeting' => self::greeting(),
 			)
