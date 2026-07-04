@@ -287,7 +287,7 @@ class Minn_Admin_REST {
 				? date_i18n( 'M j', time() - $offset * DAY_IN_SECONDS )
 				: 'Week of ' . date_i18n( 'M j', time() - ( $offset + $bucket_days - 1 ) * DAY_IN_SECONDS );
 			$chart[] = array(
-				'label' => $label . ' · ' . $count . ' event' . ( 1 === $count ? '' : 's' ),
+				'label' => $label,
 				'value' => $count,
 			);
 		}
@@ -313,11 +313,12 @@ class Minn_Admin_REST {
 			foreach ( $tseries as $i => $bucket ) {
 				$offset   = ( $buckets - 1 - $i ) * $bucket_days;
 				$label    = 1 === $bucket_days
-					? date_i18n( 'M j', time() - $offset * DAY_IN_SECONDS )
-					: 'Week of ' . date_i18n( 'M j', time() - ( $offset + $bucket_days - 1 ) * DAY_IN_SECONDS );
+					? date_i18n( 'M j, Y', time() - $offset * DAY_IN_SECONDS )
+					: 'Week of ' . date_i18n( 'M j, Y', time() - ( $offset + $bucket_days - 1 ) * DAY_IN_SECONDS );
 				$tchart[] = array(
-					'label' => sprintf( '%s · %s visitors · %s views', $label, number_format_i18n( $bucket['v'] ), number_format_i18n( $bucket['p'] ) ),
+					'label' => $label,
 					'value' => $bucket['v'],
+					'views' => $bucket['p'],
 				);
 			}
 

@@ -163,9 +163,31 @@ a { color: var(--accent2); text-decoration: none; }
 .minn-range-tabs { display: flex; gap: 4px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 3px; }
 .minn-range-tab { font-size: 13px; color: var(--text3); padding: 3px 9px; background: none; border: none; border-radius: 6px; cursor: pointer; }
 .minn-range-tab.active { color: var(--text); background: var(--panel2); font-weight: 600; }
-.minn-chart { display: flex; align-items: flex-end; gap: 6px; height: 150px; }
-.minn-chart-bar { flex: 1; border-radius: 4px 4px 2px 2px; background: var(--accent-soft); min-height: 3px; }
+.minn-chart { display: flex; align-items: flex-end; gap: 5px; height: 150px; }
+.minn-chart-col { flex: 1; position: relative; height: 100%; min-width: 0; }
+.minn-chart-bar, .minn-chart-views, .minn-chart-visitors {
+  position: absolute; bottom: 0; left: 0; right: 0; border-radius: 4px 4px 2px 2px;
+}
+.minn-chart-bar { background: var(--accent-soft); min-height: 3px; }
 .minn-chart-bar.last { background: var(--accent); }
+.minn-chart-views { background: var(--accent-soft); }
+.minn-chart-visitors { background: var(--accent); opacity: 0.85; }
+.minn-chart-col.hover .minn-chart-views { background: rgba(110,98,245,0.3); }
+.minn-chart-col.hover .minn-chart-visitors, .minn-chart-col.hover .minn-chart-bar { opacity: 1; background: var(--accent2); }
+
+#minn-chart-tip {
+  position: fixed; z-index: 80; pointer-events: none; min-width: 150px;
+  background: var(--panel); border: 1px solid var(--border2); border-radius: 11px;
+  box-shadow: var(--shadow); overflow: hidden; animation: minnScaleIn 0.1s ease;
+}
+.minn-chart-tip-date {
+  padding: 8px 13px; font-size: 12.5px; font-weight: 700; text-align: center;
+  border-bottom: 2px solid var(--accent); background: var(--panel2); white-space: nowrap;
+}
+.minn-chart-tip-stats { display: flex; gap: 18px; padding: 9px 13px 10px; justify-content: center; }
+.minn-chart-tip-stats > div { display: flex; flex-direction: column; align-items: flex-start; }
+.minn-chart-tip-stats b { font-size: 16px; letter-spacing: -0.3px; }
+.minn-chart-tip-stats span { font-size: 11.5px; color: var(--text3); }
 .minn-activity { display: flex; flex-direction: column; gap: 2px; margin-top: 14px; }
 .minn-activity-row { display: flex; gap: 11px; padding: 9px 0; align-items: flex-start; }
 .minn-activity-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }

@@ -403,7 +403,10 @@
 			return;
 		}
 		const chartData = o.traffic ? o.traffic.chart : o.chart;
-		const max = Math.max( 1, ...chartData.map( ( c ) => c.value ) );
+		// Traffic bars stack pageviews (soft) behind visitors (solid), so the
+		// scale runs to the pageview max like Koko's own widget.
+		const max = Math.max( 1, ...chartData.map( ( c ) => o.traffic ? ( c.views || c.value ) : c.value ) );
+		const pct = ( n ) => Math.max( n > 0 ? 2 : 0, Math.round( ( n / max ) * 100 ) );
 		const deltaCls = ( up ) => up === true ? ' up' : ( up === 'warn' ? ' warn' : ( up === 'down' ? ' down' : '' ) );
 		view.innerHTML = `
 		<div class="minn-dash-head">
@@ -428,8 +431,15 @@
 						${ [ 7, 30, 90 ].map( ( d ) => `<button class="minn-range-tab${ state.range === d ? ' active' : '' }" data-range="${ d }">${ d }d</button>` ).join( '' ) }
 					</div>
 				</div>
-				<div class="minn-chart">
-					${ chartData.map( ( c, i ) => `<div class="minn-chart-bar${ i === chartData.length - 1 ? ' last' : '' }" style="height:${ Math.max( 3, Math.round( ( c.value / max ) * 100 ) ) }%" title="${ esc( c.label ) }"></div>` ).join( '' ) }
+				<div class="minn-chart" id="minn-chart">
+					${ chartData.map( ( c, i ) => o.traffic ? `
+						<div class="minn-chart-col" data-ci="${ i }">
+							<div class="minn-chart-views" style="height:${ pct( c.views || 0 ) }%"></div>
+							<div class="minn-chart-visitors" style="height:${ pct( c.value ) }%"></div>
+						</div>` : `
+						<div class="minn-chart-col" data-ci="${ i }">
+							<div class="minn-chart-bar${ i === chartData.length - 1 ? ' last' : '' }" style="height:${ Math.max( 3, pct( c.value ) ) }%"></div>
+						</div>` ).join( '' ) }
 				</div>
 			</div>
 			<div class="minn-card minn-panel-pad">
@@ -454,6 +464,58 @@
 				renderOverview();
 			} )
 		);
+		bindChartTooltip( $( '#minn-chart', view ), chartData, !! o.traffic );
+	}
+
+	// Koko-style hover card: date on top, visitors/pageviews (or events) below.
+	function chartTip() {
+		let tip = $( '#minn-chart-tip' );
+		if ( ! tip ) {
+			tip = document.createElement( 'div' );
+			tip.id = 'minn-chart-tip';
+			tip.hidden = true;
+			document.body.appendChild( tip );
+		}
+		return tip;
+	}
+
+	function bindChartTooltip( chart, data, isTraffic ) {
+		if ( ! chart ) return;
+		const tip = chartTip();
+		let current = -1;
+
+		const hide = () => {
+			tip.hidden = true;
+			current = -1;
+			$$( '.minn-chart-col.hover', chart ).forEach( ( el ) => el.classList.remove( 'hover' ) );
+		};
+
+		chart.addEventListener( 'mousemove', ( e ) => {
+			const col = e.target.closest( '[data-ci]' );
+			if ( ! col ) return hide();
+			const i = parseInt( col.dataset.ci, 10 );
+			if ( i !== current ) {
+				current = i;
+				const c = data[ i ];
+				if ( ! c ) return hide();
+				tip.innerHTML = `
+					<div class="minn-chart-tip-date">${ esc( c.label ) }</div>
+					<div class="minn-chart-tip-stats">
+						${ isTraffic ? `
+						<div><b>${ Number( c.value ).toLocaleString() }</b><span>Visitors</span></div>
+						<div><b>${ Number( c.views || 0 ).toLocaleString() }</b><span>Pageviews</span></div>` : `
+						<div><b>${ Number( c.value ).toLocaleString() }</b><span>Event${ c.value === 1 ? '' : 's' }</span></div>` }
+					</div>`;
+				$$( '.minn-chart-col.hover', chart ).forEach( ( el ) => el.classList.remove( 'hover' ) );
+				col.classList.add( 'hover' );
+				tip.hidden = false;
+			}
+			const rect = col.getBoundingClientRect();
+			const tw = tip.offsetWidth;
+			tip.style.left = Math.min( Math.max( 8, rect.left + rect.width / 2 - tw / 2 ), window.innerWidth - tw - 8 ) + 'px';
+			tip.style.top = Math.max( 8, rect.top - tip.offsetHeight - 10 ) + 'px';
+		} );
+		chart.addEventListener( 'mouseleave', hide );
 	}
 
 	/* ===== Content ===== */
@@ -3794,6 +3856,8 @@
 
 	function renderView() {
 		renderTopbar();
+		const tip = $( '#minn-chart-tip' );
+		if ( tip ) tip.hidden = true;
 		switch ( state.route ) {
 			case 'content': return renderContent();
 			case 'media': return renderMedia();
